@@ -299,6 +299,12 @@ function AccountSetup({
             autoComplete="current-password"
             required
           />
+          {provider === 'yandex' && (
+            <small className="field-hint">
+              В Яндекс Почте должен быть разрешён IMAP. Новый пароль приложения
+              типа «Почта» может активироваться не сразу.
+            </small>
+          )}
         </label>
 
         {formError && <div className="form-error">{formError}</div>}

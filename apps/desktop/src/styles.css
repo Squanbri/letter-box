@@ -316,6 +316,14 @@ button.secondary {
   box-shadow: 0 0 0 3px rgba(86, 129, 110, 0.14);
 }
 
+.field-hint {
+  display: block;
+  margin-top: 7px;
+  color: #777a73;
+  font-size: 11px;
+  line-height: 1.45;
+}
+
 .form-error {
   padding: 10px 12px;
   border-radius: 8px;

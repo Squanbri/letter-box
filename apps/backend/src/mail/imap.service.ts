@@ -73,7 +73,26 @@ export class ImapService {
       if (error instanceof BadGatewayException) {
         throw error;
       }
+      const account = this.accounts.getAccount();
       const message = error instanceof Error ? error.message : 'Неизвестная ошибка IMAP';
+      const diagnostics = this.errorDiagnostics(error);
+      console.warn('[backend:imap] Ошибка подключения', {
+        provider: account?.provider,
+        host: account?.host,
+        user: account ? this.maskEmail(account.email) : undefined,
+        ...diagnostics,
+      });
+
+      if (
+        account?.provider === 'yandex'
+        && this.isAuthenticationError(error, message)
+      ) {
+        throw new BadGatewayException(
+          'Яндекс отклонил вход. Проверьте, что IMAP включён в настройках Почты, '
+          + 'используется пароль приложения типа «Почта» и он уже успел активироваться.',
+        );
+      }
+
       throw new BadGatewayException(`Ошибка IMAP: ${message}`);
     } finally {
       if (client.usable) {
@@ -95,9 +114,48 @@ export class ImapService {
       host: account.host,
       port: account.port,
       secure: account.secure,
-      auth: { user: account.email, pass: account.password },
+      auth: { user: this.imapUsername(account), pass: account.password },
       logger: false,
     };
+  }
+
+  private imapUsername(account: {
+    provider: 'mailru' | 'yandex';
+    email: string;
+  }): string {
+    if (account.provider !== 'yandex') {
+      return account.email;
+    }
+
+    const [localPart, domain] = account.email.split('@');
+    return localPart && ['yandex.ru', 'ya.ru'].includes(domain?.toLowerCase())
+      ? localPart
+      : account.email;
+  }
+
+  private isAuthenticationError(error: unknown, message: string): boolean {
+    const record = error as Record<string, unknown> | null;
+    return record?.authenticationFailed === true
+      || /auth|login|credential|password|парол/i.test(
+        `${message} ${String(record?.responseText ?? '')}`,
+      );
+  }
+
+  private errorDiagnostics(error: unknown): Record<string, unknown> {
+    const record = error as Record<string, unknown> | null;
+    return {
+      name: error instanceof Error ? error.name : undefined,
+      message: error instanceof Error ? error.message : String(error),
+      code: record?.code,
+      responseStatus: record?.responseStatus,
+      responseText: record?.responseText,
+      authenticationFailed: record?.authenticationFailed,
+    };
+  }
+
+  private maskEmail(email: string): string {
+    const [localPart, domain] = email.split('@');
+    return domain ? `${localPart.slice(0, 2)}***@${domain}` : '***';
   }
 
   private toMetadata(message: FetchMessageObject): MessageMetadata {
