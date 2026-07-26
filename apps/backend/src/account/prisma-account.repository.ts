@@ -5,7 +5,7 @@ import type { AccountRow } from './account.repository';
 import { PrismaDatabaseService } from '../database/prisma-database.service';
 
 @Injectable()
-export class PostgresAccountRepository {
+export class PrismaAccountRepository {
   constructor(private readonly database: PrismaDatabaseService) {}
 
   async resetConnectionStatuses(now: string): Promise<void> {

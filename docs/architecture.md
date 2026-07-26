@@ -42,9 +42,10 @@ encrypted by the server using AES-256-GCM and a key provided through
 
 The PostgreSQL data model is declared in Prisma Schema. Prisma 7 uses the
 official `pg` driver adapter and a single NestJS-managed Prisma Client per
-process. Account persistence is implemented with typed Prisma queries. The
-mail and auth repositories remain compatible with the existing SQL boundary
-while they are migrated incrementally.
+process. Account, auth, mailbox, and message persistence use typed Prisma
+queries and interactive transactions. Direct `pg` access is limited to
+bootstrapping the already-deployed SQL migration history and the explicit
+SQLite import utility.
 
 Application services and controllers access PostgreSQL through asynchronous
 repository contracts. Account and mail repositories own SQL, transactions,

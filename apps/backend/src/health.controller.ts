@@ -4,7 +4,7 @@ import {
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { Public } from './auth/public.decorator';
-import { PostgresDatabaseService } from './database/postgres-database.service';
+import { PrismaDatabaseService } from './database/prisma-database.service';
 import { SyncQueueService } from './sync/sync-queue.service';
 
 interface HealthResponse {
@@ -21,7 +21,7 @@ interface ReadinessResponse extends HealthResponse {
 @Controller('health')
 export class HealthController {
   constructor(
-    private readonly database: PostgresDatabaseService,
+    private readonly database: PrismaDatabaseService,
     private readonly syncQueue: SyncQueueService,
   ) {}
 

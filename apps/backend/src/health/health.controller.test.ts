@@ -1,13 +1,13 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { HealthController } from '../health.controller';
-import type { PostgresDatabaseService } from '../database/postgres-database.service';
+import type { PrismaDatabaseService } from '../database/prisma-database.service';
 import type { SyncQueueService } from '../sync/sync-queue.service';
 
 function controller(workers: number): HealthController {
   const database = {
     ping: async () => undefined,
-  } as PostgresDatabaseService;
+  } as PrismaDatabaseService;
   const queue = {
     workerCount: async () => workers,
   } as SyncQueueService;

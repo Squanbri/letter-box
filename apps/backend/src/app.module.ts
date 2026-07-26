@@ -12,9 +12,8 @@ import { MailController } from './mail/mail.controller';
 import { MailService } from './mail/mail.service';
 import { EventsGateway } from './events/events.gateway';
 import { SyncLockService } from './sync/sync-lock.service';
-import { PostgresDatabaseService } from './database/postgres-database.service';
-import { PostgresAccountRepository } from './account/postgres-account.repository';
-import { PostgresMailRepository } from './mail/postgres-mail.repository';
+import { PrismaAccountRepository } from './account/prisma-account.repository';
+import { PrismaMailRepository } from './mail/prisma-mail.repository';
 import {
   ACCOUNT_REPOSITORY,
   MAIL_REPOSITORY,
@@ -22,7 +21,7 @@ import {
 import { AuthController } from './auth/auth.controller';
 import { AuthService } from './auth/auth.service';
 import { AuthGuard } from './auth/auth.guard';
-import { PostgresAuthRepository } from './auth/postgres-auth.repository';
+import { PrismaAuthRepository } from './auth/prisma-auth.repository';
 import { AUTH_REPOSITORY } from './auth/auth.contract';
 import { AccountOwnershipGuard } from './auth/account-ownership.guard';
 import { SyncQueueService } from './sync/sync-queue.service';
@@ -58,26 +57,25 @@ import { PrismaDatabaseService } from './database/prisma-database.service';
   ],
   providers: [
     AccountService,
-    PostgresAccountRepository,
-    PostgresDatabaseService,
+    PrismaAccountRepository,
     PrismaDatabaseService,
     ImapService,
     MailService,
-    PostgresMailRepository,
+    PrismaMailRepository,
     AuthService,
     AccountOwnershipGuard,
-    PostgresAuthRepository,
+    PrismaAuthRepository,
     {
       provide: ACCOUNT_REPOSITORY,
-      useExisting: PostgresAccountRepository,
+      useExisting: PrismaAccountRepository,
     },
     {
       provide: MAIL_REPOSITORY,
-      useExisting: PostgresMailRepository,
+      useExisting: PrismaMailRepository,
     },
     {
       provide: AUTH_REPOSITORY,
-      useExisting: PostgresAuthRepository,
+      useExisting: PrismaAuthRepository,
     },
     {
       provide: APP_GUARD,

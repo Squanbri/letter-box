@@ -4,7 +4,7 @@ import test from 'node:test';
 import { PostgresDatabaseService } from '../database/postgres-database.service';
 import { PrismaDatabaseService } from '../database/prisma-database.service';
 import type { AccountConfig } from '../runtime';
-import { PostgresAccountRepository } from './postgres-account.repository';
+import { PrismaAccountRepository } from './prisma-account.repository';
 
 test('stores and isolates an account in PostgreSQL', {
   skip: !process.env.POSTGRES_TEST_URL,
@@ -15,7 +15,7 @@ test('stores and isolates an account in PostgreSQL', {
   await database.onModuleInit();
   const prisma = new PrismaDatabaseService();
   await prisma.onModuleInit();
-  const repository = new PostgresAccountRepository(prisma);
+  const repository = new PrismaAccountRepository(prisma);
   const id = randomUUID();
   const userId = randomUUID();
   const now = new Date().toISOString();

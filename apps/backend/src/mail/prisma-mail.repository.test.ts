@@ -1,11 +1,11 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import test from 'node:test';
-import { PostgresAccountRepository } from '../account/postgres-account.repository';
+import { PrismaAccountRepository } from '../account/prisma-account.repository';
 import { PostgresDatabaseService } from '../database/postgres-database.service';
 import { PrismaDatabaseService } from '../database/prisma-database.service';
 import type { AccountConfig } from '../runtime';
-import { PostgresMailRepository } from './postgres-mail.repository';
+import { PrismaMailRepository } from './prisma-mail.repository';
 
 test('isolates composite message keys and applies changes in PostgreSQL', {
   skip: !process.env.POSTGRES_TEST_URL,
@@ -16,8 +16,8 @@ test('isolates composite message keys and applies changes in PostgreSQL', {
   await database.onModuleInit();
   const prisma = new PrismaDatabaseService();
   await prisma.onModuleInit();
-  const accounts = new PostgresAccountRepository(prisma);
-  const mail = new PostgresMailRepository(database);
+  const accounts = new PrismaAccountRepository(prisma);
+  const mail = new PrismaMailRepository(prisma);
   const first = account(randomUUID());
   const second = account(randomUUID());
   const now = new Date().toISOString();
