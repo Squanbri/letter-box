@@ -207,7 +207,7 @@ export class ImapService {
         throw error;
       }
       const account = this.accounts.getConfig(accountId);
-      const message = error instanceof Error ? error.message : 'Неизвестная ошибка IMAP';
+      const message = this.errorMessage(error);
       const diagnostics = this.errorDiagnostics(error);
       console.warn('[backend:imap] Ошибка подключения', {
         provider: account?.provider,
@@ -223,6 +223,16 @@ export class ImapService {
         throw new BadGatewayException(
           'Яндекс отклонил вход. Проверьте, что IMAP включён в настройках Почты, '
           + 'используется пароль приложения типа «Почта» и он уже успел активироваться.',
+        );
+      }
+
+      if (
+        account?.provider === 'gmail'
+        && this.isAuthenticationError(error, message)
+      ) {
+        throw new BadGatewayException(
+          'Google отклонил вход. Включите двухэтапную аутентификацию и '
+          + 'используйте 16-значный пароль приложения Google, а не пароль аккаунта.',
         );
       }
 
@@ -247,7 +257,7 @@ export class ImapService {
   }
 
   private imapUsername(account: {
-    provider: 'mailru' | 'yandex';
+    provider: 'mailru' | 'yandex' | 'gmail';
     email: string;
   }): string {
     if (account.provider !== 'yandex') {
@@ -263,9 +273,26 @@ export class ImapService {
   private isAuthenticationError(error: unknown, message: string): boolean {
     const record = error as Record<string, unknown> | null;
     return record?.authenticationFailed === true
-      || /auth|login|credential|password|парол/i.test(
-        `${message} ${String(record?.responseText ?? '')}`,
+      || /AUTHENTICATIONFAILED|AUTHORIZATIONFAILED/i.test(
+        String(record?.serverResponseCode ?? ''),
+      )
+      || /auth|login|credential|password|парол|invalid credentials/i.test(
+        `${message} ${String(record?.responseText ?? '')} ${String(record?.response ?? '')}`,
       );
+  }
+
+  private errorMessage(error: unknown): string {
+    const record = error as Record<string, unknown> | null;
+    const details = [
+      record?.responseText,
+      record?.response,
+      record?.serverResponseCode,
+      error instanceof Error ? error.message : error,
+    ];
+    return details
+      .find((value) => typeof value === 'string' && value.trim() && value !== 'Command failed')
+      ?.toString()
+      ?? (error instanceof Error ? error.message : 'Неизвестная ошибка IMAP');
   }
 
   private errorDiagnostics(error: unknown): Record<string, unknown> {
@@ -276,6 +303,8 @@ export class ImapService {
       code: record?.code,
       responseStatus: record?.responseStatus,
       responseText: record?.responseText,
+      response: record?.response,
+      serverResponseCode: record?.serverResponseCode,
       authenticationFailed: record?.authenticationFailed,
     };
   }

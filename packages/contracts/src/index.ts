@@ -1,4 +1,4 @@
-export type MailProvider = 'mailru' | 'yandex';
+export type MailProvider = 'mailru' | 'yandex' | 'gmail';
 export type AccountConnectionStatus =
   | 'connected'
   | 'disconnected'

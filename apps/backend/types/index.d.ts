@@ -1,6 +1,6 @@
 export interface AccountConfig {
   id: string;
-  provider: 'mailru' | 'yandex';
+  provider: 'mailru' | 'yandex' | 'gmail';
   email: string;
   password: string;
   host: string;

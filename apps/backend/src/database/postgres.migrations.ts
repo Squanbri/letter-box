@@ -104,4 +104,16 @@ export const postgresMigrations: PostgresMigration[] = [
       ON auth_sessions(expires_at);
     `,
   },
+  {
+    version: 4,
+    name: 'add gmail provider',
+    sql: `
+      ALTER TABLE accounts
+      DROP CONSTRAINT accounts_provider_check;
+
+      ALTER TABLE accounts
+      ADD CONSTRAINT accounts_provider_check
+      CHECK (provider IN ('mailru', 'yandex', 'gmail'));
+    `,
+  },
 ];

@@ -365,7 +365,7 @@ function Overview({
           </article>
         ))}
         {accounts.length === 0 && (
-          <div className="empty-overview"><strong>Подключите первую почту</strong><span>Mail.ru и Яндекс поддерживают несколько аккаунтов.</span></div>
+          <div className="empty-overview"><strong>Подключите первую почту</strong><span>Mail.ru, Яндекс и Gmail поддерживают несколько аккаунтов.</span></div>
         )}
       </div>
     </section>
@@ -847,7 +847,7 @@ function AccountDialog({ current, onClose, onSaved }: {
     <div className="dialog-backdrop" onMouseDown={onClose}>
       <form className="account-card" onSubmit={(event) => void submit(event)} onMouseDown={(event) => event.stopPropagation()}>
         <div><span className="eyebrow">{current ? 'Переподключение' : 'Новый аккаунт'}</span><h2>Подключение к почте</h2><p>Используйте отдельный пароль приложения. Он будет зашифрован на сервере Letter Box.</p></div>
-        <fieldset><legend>Почтовый сервис</legend>{(['mailru', 'yandex'] as const).map((provider) => <label key={provider} className={form.provider === provider ? 'provider selected' : 'provider'}><input type="radio" checked={form.provider === provider} onChange={() => setForm({ ...form, provider })} />{providerName(provider)}</label>)}</fieldset>
+        <fieldset><legend>Почтовый сервис</legend>{(['mailru', 'yandex', 'gmail'] as const).map((provider) => <label key={provider} className={form.provider === provider ? 'provider selected' : 'provider'}><input type="radio" checked={form.provider === provider} onChange={() => setForm({ ...form, provider })} />{providerName(provider)}</label>)}</fieldset>
         <label className="field"><span>Email</span><input type="email" value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} required /></label>
         <label className="field"><span>Пароль приложения</span><input type="password" value={form.password} onChange={(event) => setForm({ ...form, password: event.target.value })} required /></label>
         {error && <div className="form-error">{error}</div>}
@@ -918,7 +918,9 @@ function showNewMailNotification(email: string, count: number) {
     body: `${email}: ${count} ${suffix}`,
   });
 }
-function providerName(provider: AccountStatus['provider']) { return provider === 'mailru' ? 'Mail.ru' : 'Яндекс'; }
+function providerName(provider: AccountStatus['provider']) {
+  return provider === 'mailru' ? 'Mail.ru' : provider === 'yandex' ? 'Яндекс' : 'Gmail';
+}
 function statusName(status: AccountStatus['status']) { return status === 'connected' ? 'Подключён' : status === 'syncing' ? 'Синхронизация…' : status === 'error' ? 'Требует внимания' : 'Не проверен'; }
 function errorMessage(reason: unknown) { return reason instanceof Error ? reason.message : 'Произошла неизвестная ошибка'; }
 function formatDate(value: string) { const date = new Date(value); return date.toDateString() === new Date().toDateString() ? date.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }) : date.toLocaleDateString('ru-RU', { day: '2-digit', month: 'short' }); }
