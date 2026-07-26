@@ -44,6 +44,7 @@ export class MailService {
     this.accounts.get(accountId);
     const running = this.syncs.get(accountId);
     if (running) return running;
+    this.accounts.setStatus(accountId, 'syncing');
     const sync = this.performSync(accountId).finally(() => this.syncs.delete(accountId));
     this.syncs.set(accountId, sync);
     return sync;
