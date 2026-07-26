@@ -1,0 +1,10 @@
+node_modules/
+dist/
+dist-electron/
+.vite/
+.env
+*.db
+*.db-shm
+*.db-wal
+.DS_Store
+npm-debug.log*

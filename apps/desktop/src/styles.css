@@ -1,0 +1,209 @@
+:root {
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+  color: #232421;
+  background: #f3f4f0;
+  font-synthesis: none;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-width: 820px;
+  min-height: 100vh;
+}
+
+button {
+  font: inherit;
+}
+
+.app-shell {
+  height: 100vh;
+  display: grid;
+  grid-template-rows: 76px auto 1fr;
+  overflow: hidden;
+}
+
+.toolbar {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  padding: 20px 24px 14px 88px;
+  border-bottom: 1px solid #d9dad5;
+  background: rgba(248, 249, 246, 0.92);
+  -webkit-app-region: drag;
+}
+
+.toolbar h1 {
+  margin: 0;
+  font-size: 25px;
+  line-height: 1;
+}
+
+.toolbar span {
+  display: block;
+  margin-top: 5px;
+  color: #797b74;
+  font-size: 12px;
+}
+
+.toolbar button {
+  border: 0;
+  border-radius: 8px;
+  padding: 8px 14px;
+  background: #31594a;
+  color: white;
+  cursor: pointer;
+  -webkit-app-region: no-drag;
+}
+
+.toolbar button:disabled {
+  cursor: wait;
+  opacity: 0.65;
+}
+
+.error-banner {
+  padding: 9px 24px;
+  background: #fff0ed;
+  border-bottom: 1px solid #efc3bb;
+  color: #9a3427;
+  font-size: 13px;
+}
+
+.mail-layout {
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(290px, 35%) 1fr;
+}
+
+.message-list {
+  overflow-y: auto;
+  border-right: 1px solid #d9dad5;
+  background: #f8f9f6;
+}
+
+.message-row {
+  width: 100%;
+  display: block;
+  padding: 15px 18px;
+  border: 0;
+  border-bottom: 1px solid #e1e2de;
+  text-align: left;
+  color: inherit;
+  background: transparent;
+  cursor: pointer;
+}
+
+.message-row:hover {
+  background: #eef0ea;
+}
+
+.message-row.selected {
+  background: #dfe8df;
+}
+
+.message-heading {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 13px;
+}
+
+.message-heading strong,
+.subject {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.message-heading time,
+.meta {
+  flex: none;
+  color: #80827b;
+  font-size: 11px;
+}
+
+.subject {
+  display: block;
+  margin: 7px 0 5px;
+  font-size: 14px;
+}
+
+.message-view {
+  min-width: 0;
+  overflow: hidden;
+  display: grid;
+  grid-template-rows: auto 1fr;
+  background: #fff;
+}
+
+.message-header {
+  padding: 28px 32px 20px;
+  border-bottom: 1px solid #e4e4e0;
+}
+
+.message-header h2 {
+  margin: 0 0 18px;
+  font-size: 22px;
+  font-weight: 650;
+}
+
+.message-header div {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 3px 20px;
+  font-size: 13px;
+}
+
+.message-header div span {
+  color: #777972;
+}
+
+.message-header time {
+  grid-column: 2;
+  grid-row: 1 / 3;
+  color: #777972;
+}
+
+.message-body {
+  min-height: 0;
+  overflow: auto;
+}
+
+.message-body iframe {
+  width: 100%;
+  height: 100%;
+  border: 0;
+  background: white;
+}
+
+.message-body pre {
+  margin: 0;
+  padding: 28px 32px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font: 14px/1.6 -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+}
+
+.empty-state,
+.loading {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 30px;
+  color: #777972;
+  text-align: center;
+}
+
+.empty-state strong {
+  color: #41433e;
+}
+
+.empty-state span {
+  font-size: 13px;
+}
