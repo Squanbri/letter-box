@@ -21,7 +21,7 @@ interface MessageRow {
 
 @Injectable()
 export class MailService {
-  private readonly syncs = new Map<string, Promise<{ synced: number }>>();
+  private readonly syncs = new Map<string, Promise<SyncResult>>();
 
   constructor(
     @Inject(DatabaseService) private readonly database: DatabaseService,
@@ -40,7 +40,7 @@ export class MailService {
     }
   }
 
-  syncInbox(accountId: string): Promise<{ synced: number }> {
+  syncInbox(accountId: string): Promise<SyncResult> {
     this.accounts.get(accountId);
     const running = this.syncs.get(accountId);
     if (running) return running;
@@ -50,19 +50,28 @@ export class MailService {
     return sync;
   }
 
-  private async performSync(accountId: string): Promise<{ synced: number }> {
+  private async performSync(accountId: string): Promise<SyncResult> {
     try {
-      const result = await this.imap.fetchMetadata(accountId);
       const db = this.database.db;
       const mailbox = 'INBOX';
       const currentState = db.prepare(
         'SELECT uid_validity FROM mailbox_state WHERE account_id = ? AND mailbox = ?',
       ).get(accountId, mailbox) as { uid_validity: string } | undefined;
+      const knownUids = db.prepare(
+        'SELECT uid FROM messages WHERE account_id = ? AND mailbox = ? ORDER BY uid',
+      ).all(accountId, mailbox) as Array<{ uid: number }>;
+      const result = await this.imap.fetchChanges(
+        accountId,
+        knownUids.map((row) => row.uid),
+        currentState?.uid_validity,
+      );
 
-      db.transaction((messages: MessageMetadata[]) => {
-        if (currentState && currentState.uid_validity !== result.uidValidity) {
-          db.prepare('DELETE FROM messages WHERE account_id = ? AND mailbox = ?')
-            .run(accountId, mailbox);
+      const removed = db.transaction((messages: MessageMetadata[]) => {
+        let removedCount = 0;
+        if (result.reset) {
+          removedCount += db.prepare(
+            'DELETE FROM messages WHERE account_id = ? AND mailbox = ?',
+          ).run(accountId, mailbox).changes;
         }
         db.prepare(`
           INSERT INTO mailbox_state (account_id, mailbox, uid_validity) VALUES (?, ?, ?)
@@ -86,7 +95,14 @@ export class MailService {
             ...message, accountId, mailbox, flags: JSON.stringify(message.flags),
           });
         }
-        const serverUids = new Set(messages.map((message) => message.uid));
+        const updateFlags = db.prepare(`
+          UPDATE messages SET flags = ?
+          WHERE account_id = ? AND mailbox = ? AND uid = ?
+        `);
+        for (const update of result.flagUpdates) {
+          updateFlags.run(JSON.stringify(update.flags), accountId, mailbox, update.uid);
+        }
+        const serverUids = new Set(result.serverUids);
         const localUids = db.prepare(
           'SELECT uid FROM messages WHERE account_id = ? AND mailbox = ?',
         ).all(accountId, mailbox) as Array<{ uid: number }>;
@@ -94,11 +110,19 @@ export class MailService {
           'DELETE FROM messages WHERE account_id = ? AND mailbox = ? AND uid = ?',
         );
         for (const row of localUids) {
-          if (!serverUids.has(row.uid)) remove.run(accountId, mailbox, row.uid);
+          if (!serverUids.has(row.uid)) {
+            removedCount += remove.run(accountId, mailbox, row.uid).changes;
+          }
         }
+        return removedCount;
       })(result.messages);
       this.accounts.markSynced(accountId);
-      return { synced: result.messages.length };
+      return {
+        synced: result.messages.length + result.flagUpdates.length,
+        added: result.messages.length,
+        updated: result.flagUpdates.length,
+        removed,
+      };
     } catch (error) {
       this.accounts.setStatus(accountId, 'error', this.message(error));
       throw error;
@@ -146,4 +170,11 @@ export class MailService {
   private message(error: unknown): string {
     return error instanceof Error ? error.message : 'Неизвестная ошибка IMAP';
   }
+}
+
+export interface SyncResult {
+  synced: number;
+  added: number;
+  updated: number;
+  removed: number;
 }

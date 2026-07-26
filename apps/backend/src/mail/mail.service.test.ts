@@ -6,7 +6,7 @@ import test from 'node:test';
 import { AccountService } from '../account/account.service';
 import { DatabaseService } from '../database/database.service';
 import { configureRuntime, type AccountConfig } from '../runtime';
-import { ImapService } from './imap.service';
+import { ImapService, selectMetadataUids } from './imap.service';
 import { MailService } from './mail.service';
 
 const account = (id: string, email: string): AccountConfig => ({
@@ -81,10 +81,16 @@ test('deduplicates concurrent synchronization for the same account', async () =>
     let release!: () => void;
     const waiting = new Promise<void>((resolve) => { release = resolve; });
     const imap = {
-      fetchMetadata: async () => {
+      fetchChanges: async () => {
         fetches += 1;
         await waiting;
-        return { uidValidity: '1', messages: [] };
+        return {
+          uidValidity: '1',
+          reset: false,
+          serverUids: [],
+          messages: [],
+          flagUpdates: [],
+        };
       },
     } as unknown as ImapService;
     const mail = new MailService(context.database, imap, context.accounts);
@@ -94,9 +100,62 @@ test('deduplicates concurrent synchronization for the same account', async () =>
     assert.strictEqual(first, second);
     assert.equal(context.accounts.get('first').status, 'syncing');
     release();
-    assert.deepEqual(await Promise.all([first, second]), [{ synced: 0 }, { synced: 0 }]);
+    const emptyResult = { synced: 0, added: 0, updated: 0, removed: 0 };
+    assert.deepEqual(await Promise.all([first, second]), [emptyResult, emptyResult]);
     assert.equal(fetches, 1);
     assert.equal(context.accounts.get('first').status, 'connected');
+  } finally {
+    context.close();
+  }
+});
+
+test('applies incremental additions, flag updates, and removals', async () => {
+  const context = await fixture();
+  try {
+    await context.accounts.persist(account('first', 'first@example.com'));
+    const snapshots = [
+      {
+        uidValidity: '1',
+        reset: false,
+        serverUids: [10, 11],
+        messages: [
+          metadata(10, []),
+          metadata(11, ['\\Seen']),
+        ],
+        flagUpdates: [],
+      },
+      {
+        uidValidity: '1',
+        reset: false,
+        serverUids: [11, 12],
+        messages: [metadata(12, [])],
+        flagUpdates: [{ uid: 11, flags: [] }],
+      },
+    ];
+    const calls: number[][] = [];
+    const imap = {
+      fetchChanges: async (_accountId: string, knownUids: number[]) => {
+        calls.push(knownUids);
+        return snapshots.shift()!;
+      },
+    } as unknown as ImapService;
+    const mail = new MailService(context.database, imap, context.accounts);
+
+    assert.deepEqual(
+      await mail.syncInbox('first'),
+      { synced: 2, added: 2, updated: 0, removed: 0 },
+    );
+    assert.deepEqual(
+      await mail.syncInbox('first'),
+      { synced: 2, added: 1, updated: 1, removed: 1 },
+    );
+    assert.deepEqual(calls, [[], [10, 11]]);
+    assert.deepEqual(
+      context.database.db.prepare(
+        'SELECT uid, flags FROM messages ORDER BY uid',
+      ).all(),
+      [{ uid: 11, flags: '[]' }, { uid: 12, flags: '[]' }],
+    );
   } finally {
     context.close();
   }
@@ -116,3 +175,27 @@ test('resets an interrupted synchronization status after restart', async () => {
     context.close();
   }
 });
+
+test('limits initial metadata and never backfills older UIDs as new mail', () => {
+  const serverUids = Array.from({ length: 1_000 }, (_, index) => index + 1);
+  assert.deepEqual(
+    selectMetadataUids(serverUids, [], 3),
+    [998, 999, 1000],
+  );
+  assert.deepEqual(
+    selectMetadataUids([...serverUids, 1001, 1002], [998, 999, 1000], 500),
+    [1001, 1002],
+  );
+});
+
+function metadata(uid: number, flags: string[]) {
+  return {
+    uid,
+    subject: `Message ${uid}`,
+    senderName: null,
+    senderAddress: 'sender@example.com',
+    date: new Date(uid * 1000).toISOString(),
+    flags,
+    size: uid,
+  };
+}

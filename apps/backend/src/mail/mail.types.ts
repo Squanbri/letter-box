@@ -25,3 +25,16 @@ export interface MessageMetadata {
   flags: string[];
   size: number;
 }
+
+export interface MessageFlags {
+  uid: number;
+  flags: string[];
+}
+
+export interface MailboxChanges {
+  uidValidity: string;
+  reset: boolean;
+  serverUids: number[];
+  messages: MessageMetadata[];
+  flagUpdates: MessageFlags[];
+}
