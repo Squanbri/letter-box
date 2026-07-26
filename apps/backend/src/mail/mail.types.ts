@@ -38,3 +38,12 @@ export interface MailboxChanges {
   messages: MessageMetadata[];
   flagUpdates: MessageFlags[];
 }
+
+export interface MailboxRecord {
+  path: string;
+  name: string;
+  delimiter: string;
+  specialUse: string | null;
+  totalCount: number;
+  unreadCount: number;
+}

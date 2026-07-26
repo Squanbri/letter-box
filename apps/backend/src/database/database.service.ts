@@ -38,6 +38,19 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
         FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE
       );
 
+      CREATE TABLE IF NOT EXISTS mailboxes (
+        account_id TEXT NOT NULL,
+        path TEXT NOT NULL,
+        name TEXT NOT NULL,
+        delimiter TEXT NOT NULL,
+        special_use TEXT,
+        total_count INTEGER NOT NULL DEFAULT 0,
+        unread_count INTEGER NOT NULL DEFAULT 0,
+        listed_at TEXT NOT NULL,
+        PRIMARY KEY (account_id, path),
+        FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE
+      );
+
       CREATE TABLE IF NOT EXISTS messages (
         account_id TEXT NOT NULL,
         mailbox TEXT NOT NULL,
@@ -58,6 +71,8 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
       CREATE INDEX IF NOT EXISTS idx_messages_received_at
       ON messages(account_id, mailbox, received_at DESC);
     `);
+    this.ensureColumn('mailboxes', 'total_count', 'INTEGER NOT NULL DEFAULT 0');
+    this.ensureColumn('mailboxes', 'unread_count', 'INTEGER NOT NULL DEFAULT 0');
     this.connection.pragma('foreign_keys = ON');
 
     for (const path of [databasePath, `${databasePath}-shm`, `${databasePath}-wal`]) {
@@ -92,6 +107,14 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
     }
     if (mailboxState.length > 0 && !mailboxState.some((column) => column.name === 'account_id')) {
       this.connection.exec('DROP TABLE mailbox_state');
+    }
+  }
+
+  private ensureColumn(table: string, column: string, definition: string): void {
+    const columns = this.connection.prepare(`PRAGMA table_info(${table})`)
+      .all() as Array<{ name: string }>;
+    if (!columns.some((item) => item.name === column)) {
+      this.connection.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
     }
   }
 }

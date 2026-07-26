@@ -36,6 +36,15 @@ export interface SyncResult {
   removed: number;
 }
 
+export interface MailboxInfo {
+  path: string;
+  name: string;
+  delimiter: string;
+  specialUse: string | null;
+  totalCount: number;
+  unreadCount: number;
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${API_URL}${path}`, init);
   if (!response.ok) {
@@ -67,13 +76,23 @@ export const api = {
     request<{ deleted: true }>(accountPath(id), { method: 'DELETE' }),
   connect: (id: string) =>
     request<{ connected: true }>(`${accountPath(id)}/imap/connect`, { method: 'POST' }),
-  sync: (id: string) =>
+  sync: (id: string, mailbox = 'INBOX') =>
     request<SyncResult>(
-      `${accountPath(id)}/mail/sync`,
+      `${accountPath(id)}/mail/sync?mailbox=${encodeURIComponent(mailbox)}`,
       { method: 'POST' },
     ),
-  messages: (id: string, mailbox = 'INBOX') =>
-    request<Message[]>(`${accountPath(id)}/messages?mailbox=${encodeURIComponent(mailbox)}`),
+  mailboxes: (id: string) => request<MailboxInfo[]>(`${accountPath(id)}/mailboxes`),
+  syncMailboxes: (id: string) =>
+    request<MailboxInfo[]>(`${accountPath(id)}/mailboxes/sync`, { method: 'POST' }),
+  messages: (id: string, mailbox = 'INBOX', offset = 0, limit = 50) =>
+    request<Message[]>(
+      `${accountPath(id)}/messages?mailbox=${encodeURIComponent(mailbox)}&offset=${offset}&limit=${limit}`,
+    ),
+  loadOlder: (id: string, mailbox: string, beforeUid?: number) =>
+    request<{ loaded: number }>(
+      `${accountPath(id)}/mail/load-older?mailbox=${encodeURIComponent(mailbox)}${beforeUid ? `&beforeUid=${beforeUid}` : ''}`,
+      { method: 'POST' },
+    ),
   message: (id: string, uid: number, mailbox = 'INBOX') =>
     request<Message>(
       `${accountPath(id)}/messages/${uid}?mailbox=${encodeURIComponent(mailbox)}`,
