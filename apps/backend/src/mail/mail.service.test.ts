@@ -391,6 +391,68 @@ test('synchronizes different mailboxes independently for one account', async () 
   }
 });
 
+test('flags, archives, and deletes only the targeted message', async () => {
+  const context = await fixture();
+  try {
+    await context.accounts.persist(account('first', 'first@example.com'));
+    const now = new Date().toISOString();
+    const insertMailbox = context.database.db.prepare(`
+      INSERT INTO mailboxes (
+        account_id, path, name, delimiter, special_use, listed_at
+      ) VALUES ('first', ?, ?, '/', ?, ?)
+    `);
+    insertMailbox.run('INBOX', 'Inbox', '\\Inbox', now);
+    insertMailbox.run('Archive', 'Archive', '\\Archive', now);
+    insertMailbox.run('Trash', 'Trash', '\\Trash', now);
+    const insertMessage = context.database.db.prepare(`
+      INSERT INTO messages (
+        account_id, mailbox, uid, received_at, flags, size
+      ) VALUES ('first', ?, ?, ?, '[]', 1)
+    `);
+    insertMessage.run('INBOX', 1, now);
+    insertMessage.run('INBOX', 2, now);
+    insertMessage.run('Trash', 3, now);
+    const commands: string[] = [];
+    const imap = {
+      setFlagged: async (_id: string, mailbox: string, uid: number, value: boolean) => {
+        commands.push(`flag:${mailbox}:${uid}:${value}`);
+      },
+      moveMessage: async (
+        _id: string,
+        mailbox: string,
+        uid: number,
+        destination: string,
+      ) => {
+        commands.push(`move:${mailbox}:${uid}:${destination}`);
+      },
+      deleteMessage: async (_id: string, mailbox: string, uid: number) => {
+        commands.push(`delete:${mailbox}:${uid}`);
+      },
+    } as unknown as ImapService;
+    const mail = new MailService(context.database, imap, context.accounts);
+
+    assert.deepEqual((await mail.setFlagged('first', 'INBOX', 1, true)).flags, ['\\Flagged']);
+    await mail.archiveMessage('first', 'INBOX', 1);
+    await mail.deleteMessage('first', 'INBOX', 2);
+    await mail.deleteMessage('first', 'Trash', 3);
+
+    assert.deepEqual(commands, [
+      'flag:INBOX:1:true',
+      'move:INBOX:1:Archive',
+      'move:INBOX:2:Trash',
+      'delete:Trash:3',
+    ]);
+    assert.equal(
+      (context.database.db.prepare(
+        'SELECT COUNT(*) AS count FROM messages WHERE account_id = ?',
+      ).get('first') as { count: number }).count,
+      0,
+    );
+  } finally {
+    context.close();
+  }
+});
+
 function metadata(uid: number, flags: string[]) {
   return {
     uid,

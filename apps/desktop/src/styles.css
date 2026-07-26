@@ -311,6 +311,17 @@ button.secondary {
 .mailbox-list button:hover { background: #e3e7df; }
 .mailbox-list button.selected { color: #244a3b; background: #d8e4d8; }
 .mailbox-list button span { color: #73776f; text-align: center; }
+.mailbox-list .mailbox-spinner {
+  width: 20px;
+  display: grid;
+  place-items: center;
+}
+.mailbox-list .mailbox-spinner .spinner {
+  width: 13px;
+  height: 13px;
+  border-color: #bfc6bc;
+  border-top-color: #31594a;
+}
 .mailbox-list button strong {
   overflow: hidden;
   font-size: 12px;
@@ -433,6 +444,33 @@ button.secondary {
   border: 0;
   border-radius: 7px;
   cursor: pointer;
+}
+
+.message-actions {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.message-actions select {
+  max-width: 145px;
+  padding: 6px 8px;
+  border: 1px solid #d1d4cd;
+  border-radius: 7px;
+  color: #444740;
+  background: #f5f6f3;
+}
+
+.message-actions .danger {
+  color: #a03b30;
+  background: #f8e8e5;
+}
+
+.message-actions button:disabled,
+.message-actions select:disabled {
+  cursor: wait;
+  opacity: .55;
 }
 
 .message-header .sender-details {
