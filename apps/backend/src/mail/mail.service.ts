@@ -151,6 +151,27 @@ export class MailService {
     return this.mapRow(row, true);
   }
 
+  async setSeen(
+    accountId: string,
+    mailbox: string,
+    uid: number,
+    seen: boolean,
+  ): Promise<MessageRecord> {
+    const row = this.findRow(accountId, mailbox, uid);
+    if (!row) {
+      throw new NotFoundException(`Письмо с UID ${uid} отсутствует в локальной базе`);
+    }
+    await this.imap.setSeen(accountId, uid, seen);
+    const flags = new Set(JSON.parse(row.flags) as string[]);
+    if (seen) flags.add('\\Seen');
+    else flags.delete('\\Seen');
+    this.database.db.prepare(`
+      UPDATE messages SET flags = ?
+      WHERE account_id = ? AND mailbox = ? AND uid = ?
+    `).run(JSON.stringify([...flags]), accountId, mailbox, uid);
+    return this.mapRow(this.findRow(accountId, mailbox, uid)!, Boolean(row.body_loaded_at));
+  }
+
   private findRow(accountId: string, mailbox: string, uid: number): MessageRow | undefined {
     return this.database.db.prepare(
       'SELECT * FROM messages WHERE account_id = ? AND mailbox = ? AND uid = ?',

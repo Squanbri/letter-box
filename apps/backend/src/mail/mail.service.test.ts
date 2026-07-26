@@ -188,6 +188,48 @@ test('limits initial metadata and never backfills older UIDs as new mail', () =>
   );
 });
 
+test('changes seen state only for the targeted account and mailbox', async () => {
+  const context = await fixture();
+  try {
+    await context.accounts.persist(account('first', 'first@example.com'));
+    await context.accounts.persist(account('second', 'second@example.com'));
+    const insert = context.database.db.prepare(`
+      INSERT INTO messages (
+        account_id, mailbox, uid, received_at, flags, size
+      ) VALUES (?, 'INBOX', 42, ?, '[]', 1)
+    `);
+    insert.run('first', new Date(0).toISOString());
+    insert.run('second', new Date(0).toISOString());
+    const updates: Array<{ accountId: string; uid: number; seen: boolean }> = [];
+    const imap = {
+      setSeen: async (accountId: string, uid: number, seen: boolean) => {
+        updates.push({ accountId, uid, seen });
+      },
+    } as unknown as ImapService;
+    const mail = new MailService(context.database, imap, context.accounts);
+
+    assert.equal(context.accounts.get('first').unreadCount, 1);
+    assert.equal(context.accounts.get('second').unreadCount, 1);
+    const updated = await mail.setSeen('first', 'INBOX', 42, true);
+
+    assert.deepEqual(updates, [{ accountId: 'first', uid: 42, seen: true }]);
+    assert.deepEqual(updated.flags, ['\\Seen']);
+    assert.equal(context.accounts.get('first').unreadCount, 0);
+    assert.equal(context.accounts.get('second').unreadCount, 1);
+    assert.deepEqual(
+      context.database.db.prepare(
+        'SELECT account_id, flags FROM messages ORDER BY account_id',
+      ).all(),
+      [
+        { account_id: 'first', flags: '["\\\\Seen"]' },
+        { account_id: 'second', flags: '[]' },
+      ],
+    );
+  } finally {
+    context.close();
+  }
+});
+
 function metadata(uid: number, flags: string[]) {
   return {
     uid,

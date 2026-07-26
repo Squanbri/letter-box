@@ -80,6 +80,17 @@ export class ImapService {
     });
   }
 
+  async setSeen(accountId: string, uid: number, seen: boolean): Promise<void> {
+    await this.withInbox(accountId, async (client) => {
+      const update = seen
+        ? client.messageFlagsAdd(uid, ['\\Seen'], { uid: true })
+        : client.messageFlagsRemove(uid, ['\\Seen'], { uid: true });
+      if (!await update) {
+        throw new BadGatewayException(`Не удалось обновить флаги письма с UID ${uid}`);
+      }
+    });
+  }
+
   private async withInbox<T>(
     accountId: string,
     operation: (client: ImapFlow) => Promise<T>,

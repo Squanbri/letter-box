@@ -85,6 +85,7 @@ export function App() {
           return (
             <div className={active === id ? 'tab active' : 'tab'} key={id}>
               <button onClick={() => setActive(id)}>{account.email}</button>
+              {account.unreadCount > 0 && <span className="unread-badge">{formatCount(account.unreadCount)}</span>}
               <button className="tab-close" title="Закрыть вкладку" onClick={() => closeTab(id)}>×</button>
             </div>
           );
@@ -118,6 +119,12 @@ export function App() {
               syncing={syncingIds.has(account.id)}
               syncVersion={syncVersions[account.id] ?? 0}
               onSync={() => syncAccount(account.id)}
+              onAccountChanged={refresh}
+              onUnreadChange={(delta) => setAccounts((current) =>
+                current?.map((item) => item.id === account.id
+                  ? { ...item, unreadCount: Math.max(0, item.unreadCount + delta) }
+                  : item) ?? null,
+              )}
             />
           </div>
         ) : null;
@@ -166,7 +173,10 @@ function Overview({
             <button className="account-main" onClick={() => onOpen(account.id)}>
               <span className={`status-dot ${account.status}`} />
               <span><strong>{account.email}</strong><small>{providerName(account.provider)}</small></span>
-              <span className="status-label">{statusName(account.status)}</span>
+              <span className="account-summary">
+                {account.unreadCount > 0 && <strong>{account.unreadCount} непрочитанных</strong>}
+                <span className="status-label">{statusName(account.status)}</span>
+              </span>
             </button>
             {account.lastError && <p>{account.lastError}</p>}
             <footer>
@@ -186,11 +196,20 @@ function Overview({
   );
 }
 
-function Mailbox({ account, syncing, syncVersion, onSync }: {
+function Mailbox({
+  account,
+  syncing,
+  syncVersion,
+  onSync,
+  onAccountChanged,
+  onUnreadChange,
+}: {
   account: AccountStatus;
   syncing: boolean;
   syncVersion: number;
   onSync: () => Promise<void>;
+  onAccountChanged: () => Promise<void>;
+  onUnreadChange: (delta: number) => void;
 }) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [selected, setSelected] = useState<Message | null>(null);
@@ -211,9 +230,46 @@ function Mailbox({ account, syncing, syncVersion, onSync }: {
   };
   const openMessage = async (message: Message) => {
     setSelected(message); setOpeningUid(message.uid);
-    try { setSelected(await api.message(account.id, message.uid, message.mailbox)); }
+    try {
+      if (!isSeen(message)) await changeSeen(message, true);
+      setSelected(await api.message(account.id, message.uid, message.mailbox));
+    }
     catch (reason) { setError(errorMessage(reason)); }
     finally { setOpeningUid(null); }
+  };
+  const changeSeen = async (message: Message, seen: boolean) => {
+    const previousFlags = message.flags;
+    const nextFlags = withSeen(previousFlags, seen);
+    const applyFlags = (item: Message) =>
+      item.uid === message.uid && item.mailbox === message.mailbox
+        ? { ...item, flags: nextFlags }
+        : item;
+    setMessages((current) => current.map(applyFlags));
+    setSelected((current) => current ? applyFlags(current) : current);
+    onUnreadChange(seen ? -1 : 1);
+    try {
+      const updated = await api.setSeen(account.id, message.uid, seen, message.mailbox);
+      setMessages((current) => current.map((item) =>
+        item.uid === updated.uid && item.mailbox === updated.mailbox
+          ? { ...item, flags: updated.flags }
+          : item,
+      ));
+      setSelected((current) =>
+        current?.uid === updated.uid && current.mailbox === updated.mailbox
+          ? { ...current, flags: updated.flags }
+          : current,
+      );
+      await onAccountChanged();
+    } catch (reason) {
+      const rollback = (item: Message) =>
+        item.uid === message.uid && item.mailbox === message.mailbox
+          ? { ...item, flags: previousFlags }
+          : item;
+      setMessages((current) => current.map(rollback));
+      setSelected((current) => current ? rollback(current) : current);
+      onUnreadChange(seen ? 1 : -1);
+      setError(errorMessage(reason));
+    }
   };
   return (
     <section className="mail-page">
@@ -231,7 +287,7 @@ function Mailbox({ account, syncing, syncVersion, onSync }: {
             loading ? <LoadingState text="Загрузка писем…" /> : <Empty text="Писем пока нет" />
           ) :
             messages.map((message) => (
-              <button key={`${message.mailbox}:${message.uid}`} className={`message-row ${selected?.uid === message.uid ? 'selected' : ''}`} onClick={() => void openMessage(message)}>
+              <button key={`${message.mailbox}:${message.uid}`} className={`message-row ${selected?.uid === message.uid ? 'selected' : ''} ${isSeen(message) ? '' : 'unread'}`} onClick={() => void openMessage(message)}>
                 <div className="message-heading"><strong>{message.from.name || message.from.address || 'Неизвестный отправитель'}</strong><time>{formatDate(message.date)}</time></div>
                 <span className="subject">{message.subject || 'Без темы'}</span><span className="meta">{formatSize(message.size)}</span>
               </button>
@@ -239,7 +295,15 @@ function Mailbox({ account, syncing, syncVersion, onSync }: {
         </section>
         <article className="message-view">
           {!selected ? <Empty text="Выберите письмо" /> : <>
-            <header className="message-header"><h2>{selected.subject || 'Без темы'}</h2><div><strong>{selected.from.name || selected.from.address}</strong><span>{selected.from.address}</span><time>{new Date(selected.date).toLocaleString('ru-RU')}</time></div></header>
+            <header className="message-header">
+              <div className="message-title">
+                <h2>{selected.subject || 'Без темы'}</h2>
+                <button className="secondary compact" onClick={() => void changeSeen(selected, !isSeen(selected))}>
+                  {isSeen(selected) ? 'Сделать непрочитанным' : 'Сделать прочитанным'}
+                </button>
+              </div>
+              <div className="sender-details"><strong>{selected.from.name || selected.from.address}</strong><span>{selected.from.address}</span><time>{new Date(selected.date).toLocaleString('ru-RU')}</time></div>
+            </header>
             <div className="message-body">{openingUid === selected.uid ? <LoadingState text="Загрузка письма…" /> : selected.body?.html ? <iframe title={selected.subject || 'Письмо'} sandbox="allow-popups allow-popups-to-escape-sandbox" srcDoc={prepareEmailHtml(selected.body.html)} /> : <pre>{selected.body?.text || 'В письме нет текстового содержимого.'}</pre>}</div>
           </>}
         </article>
@@ -290,4 +354,12 @@ function statusName(status: AccountStatus['status']) { return status === 'connec
 function errorMessage(reason: unknown) { return reason instanceof Error ? reason.message : 'Произошла неизвестная ошибка'; }
 function formatDate(value: string) { const date = new Date(value); return date.toDateString() === new Date().toDateString() ? date.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }) : date.toLocaleDateString('ru-RU', { day: '2-digit', month: 'short' }); }
 function formatSize(bytes: number) { return bytes < 1024 * 1024 ? `${Math.max(1, Math.round(bytes / 1024))} КБ` : `${(bytes / 1024 / 1024).toFixed(1)} МБ`; }
+function formatCount(count: number) { return count > 99 ? '99+' : String(count); }
+function isSeen(message: Message) { return message.flags.includes('\\Seen'); }
+function withSeen(flags: string[], seen: boolean) {
+  const next = new Set(flags);
+  if (seen) next.add('\\Seen');
+  else next.delete('\\Seen');
+  return [...next];
+}
 function prepareEmailHtml(html: string) { const base = '<base target="_blank">'; const head = html.match(/<head(?:\s[^>]*)?>/i); if (head?.index !== undefined) { const at = head.index + head[0].length; return `${html.slice(0, at)}${base}${html.slice(at)}`; } return `${base}${html}`; }
