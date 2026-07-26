@@ -29,6 +29,13 @@ export interface Message {
   body: { text: string | null; html: string | null } | null;
 }
 
+export interface SyncResult {
+  synced: number;
+  added: number;
+  updated: number;
+  removed: number;
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${API_URL}${path}`, init);
   if (!response.ok) {
@@ -61,7 +68,7 @@ export const api = {
   connect: (id: string) =>
     request<{ connected: true }>(`${accountPath(id)}/imap/connect`, { method: 'POST' }),
   sync: (id: string) =>
-    request<{ synced: number; added: number; updated: number; removed: number }>(
+    request<SyncResult>(
       `${accountPath(id)}/mail/sync`,
       { method: 'POST' },
     ),
