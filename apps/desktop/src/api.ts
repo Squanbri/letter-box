@@ -6,6 +6,7 @@ import type {
   MailboxRecord,
   MessageRecord,
   SyncResult,
+  SyncStatus,
 } from '@letter-box/contracts';
 import type { ServerEvent } from '@letter-box/contracts';
 import { io } from 'socket.io-client';
@@ -134,6 +135,8 @@ export const api = {
       `${accountPath(id)}/mail/sync?mailbox=${encodeURIComponent(mailbox)}`,
       { method: 'POST' },
     ),
+  syncStatus: (id: string) =>
+    request<SyncStatus>(`${accountPath(id)}/mail/sync`),
   mailboxes: (id: string) => request<MailboxRecord[]>(`${accountPath(id)}/mailboxes`),
   syncMailboxes: (id: string) =>
     request<MailboxRecord[]>(`${accountPath(id)}/mailboxes/sync`, { method: 'POST' }),

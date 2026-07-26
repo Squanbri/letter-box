@@ -7,9 +7,9 @@
     "packages/*"
   ],
   "scripts": {
-    "dev": "concurrently -k -n server,desktop -c blue,magenta \"npm run dev -w @letter-box/server\" \"npm run dev -w @letter-box/desktop\"",
+    "dev": "concurrently -k -n api,worker,desktop -c blue,cyan,magenta \"npm run dev:api -w @letter-box/server\" \"npm run dev:worker -w @letter-box/server\" \"npm run dev -w @letter-box/desktop\"",
     "infra:up": "docker compose up -d postgres redis",
-    "server:up": "docker compose up -d --build server",
+    "server:up": "docker compose up -d --build server worker",
     "server:down": "docker compose down",
     "infra:down": "docker compose down",
     "db:import:sqlite": "npm run db:import:sqlite -w @letter-box/server --",

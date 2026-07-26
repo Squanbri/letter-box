@@ -32,7 +32,9 @@ export class AccountService implements OnModuleInit {
   async onModuleInit(): Promise<void> {
     const stored = await getRuntimeOptions().credentialStore?.loadAll() ?? [];
     const now = new Date().toISOString();
-    await this.repository.resetConnectionStatuses(now);
+    if (process.env.LETTER_BOX_PROCESS_ROLE !== 'worker') {
+      await this.repository.resetConnectionStatuses(now);
+    }
     for (const account of stored) {
       this.credentials.set(account.id, account);
       await this.repository.upsertStored(account, now);
@@ -53,6 +55,16 @@ export class AccountService implements OnModuleInit {
     const account = this.credentials.get(accountId);
     if (!account) throw new NotFoundException('Credentials аккаунта не найдены');
     return account;
+  }
+
+  async reloadCredential(accountId: string): Promise<void> {
+    const stored = await getRuntimeOptions().credentialStore?.loadAll() ?? [];
+    const account = stored.find((candidate) => candidate.id === accountId);
+    if (!account) {
+      this.credentials.delete(accountId);
+      throw new NotFoundException('Credentials аккаунта не найдены');
+    }
+    this.credentials.set(accountId, account);
   }
 
   prepare(input: SaveAccountInput, id: string = randomUUID()): AccountConfig {

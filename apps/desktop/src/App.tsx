@@ -397,6 +397,7 @@ function Mailbox({
   const [selected, setSelected] = useState<Message | null>(null);
   const [loading, setLoading] = useState(true);
   const [mailboxSyncCounts, setMailboxSyncCounts] = useState<Record<string, number>>({});
+  const [queuedSyncMailboxes, setQueuedSyncMailboxes] = useState<Set<string>>(new Set());
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(true);
   const [actionPending, setActionPending] = useState(false);
@@ -414,6 +415,20 @@ function Mailbox({
       return { ...current, [mailbox]: nextCount };
     });
   };
+  useEffect(() => {
+    let active = true;
+    const refreshSyncStatus = () => {
+      void api.syncStatus(account.id).then(({ mailboxes: syncingMailboxes }) => {
+        if (active) setQueuedSyncMailboxes(new Set(syncingMailboxes));
+      }).catch(() => undefined);
+    };
+    refreshSyncStatus();
+    const interval = window.setInterval(refreshSyncStatus, 5_000);
+    return () => {
+      active = false;
+      window.clearInterval(interval);
+    };
+  }, [account.id]);
   const load = useCallback(async () => {
     try {
       const page = await api.messages(account.id, selectedMailbox);
@@ -518,7 +533,9 @@ function Mailbox({
     finally { setOpeningUid(null); }
   };
   const isMailboxSyncing = (mailbox: string) =>
-    (mailboxSyncCounts[mailbox] ?? 0) > 0 || (mailbox === 'INBOX' && syncing);
+    queuedSyncMailboxes.has(mailbox)
+    || (mailboxSyncCounts[mailbox] ?? 0) > 0
+    || (mailbox === 'INBOX' && syncing);
   const currentFolderSyncing = isMailboxSyncing(selectedMailbox);
   const changeSeen = async (message: Message, seen: boolean) => {
     const previousFlags = message.flags;

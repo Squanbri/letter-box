@@ -8,14 +8,17 @@
 ```text
 Electron + React ──REST / Socket.IO──> NestJS server
                                           ├──> PostgreSQL
-                                          ├──> Redis sync locks
+                                          ├──> Redis / BullMQ
+                                          ├──> sync worker
                                           └──> IMAP (imapflow)
 ```
 
 Electron не импортирует, не запускает и не упаковывает NestJS. Сервер является
 единственным владельцем IMAP-соединений, credentials и почтовых данных. Общие
 DTO находятся в `@letter-box/contracts`. Redis координирует блокировки
-синхронизации между экземплярами сервера. PostgreSQL — обязательный и
+синхронизации и хранит очередь BullMQ. Отдельный worker владеет длительными
+IMAP-задачами, поэтому закрытие desktop или HTTP-соединения их не отменяет.
+PostgreSQL — обязательный и
 единственный источник серверных данных. SQLite используется только
 одноразовым инструментом импорта старой базы и не входит в production runtime.
 
@@ -56,7 +59,7 @@ cp .env.example .env
 существующие аккаунты без владельца. Последующая регистрация разрешается только
 при `ALLOW_REGISTRATION=true`.
 
-Запустите отдельный сервер и desktop-клиент одной dev-командой:
+Запустите API, sync worker и desktop-клиент одной dev-командой:
 
 ```bash
 npm run dev
@@ -85,8 +88,14 @@ npm run dev
 Сервер также можно запустить независимо:
 
 ```bash
-npm run dev -w @letter-box/server
+npm run infra:up
+npm run dev:api -w @letter-box/server
+npm run dev:worker -w @letter-box/server
 ```
+
+Для контейнерного запуска API и worker используйте `npm run server:up`.
+Количество параллельных worker-задач задаётся через
+`SYNC_WORKER_CONCURRENCY`; одинаковые `accountId + mailbox` дедуплицируются.
 
 Desktop получает адрес через `LETTER_BOX_API_URL`. Серверный bind и CORS
 настраиваются через `API_HOST` и `CORS_ORIGINS`.
@@ -152,6 +161,7 @@ npm run db:import:sqlite -- ./data/letter-box.db
 | `GET` | `/accounts/:accountId/mailboxes` | Локальный каталог почтовых папок |
 | `POST` | `/accounts/:accountId/mailboxes/sync` | Обновление каталога папок с IMAP |
 | `POST` | `/accounts/:accountId/mail/sync?mailbox=INBOX` | Синхронизация выбранной папки |
+| `GET` | `/accounts/:accountId/mail/sync` | Активные и ожидающие задания синхронизации |
 | `GET` | `/accounts/:accountId/messages?mailbox=INBOX` | Локальный список писем |
 | `GET` | `/accounts/:accountId/messages/:uid?mailbox=INBOX` | Письмо с ленивой загрузкой тела |
 | `PATCH` | `/accounts/:accountId/messages/:uid/seen?mailbox=INBOX` | Изменение состояния прочитано/не прочитано |
@@ -176,7 +186,7 @@ npm audit --omit=dev
 
 ```text
 apps/
-  backend/   самостоятельный NestJS server, PostgreSQL, Redis, imapflow
+  backend/   NestJS API и sync worker, PostgreSQL, Redis/BullMQ, imapflow
   desktop/   Electron, React, Vite
 packages/
   contracts/ общие DTO и события REST/Socket.IO

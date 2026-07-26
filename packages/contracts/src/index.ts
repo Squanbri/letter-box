@@ -69,6 +69,10 @@ export interface SyncResult {
   removed: number;
 }
 
+export interface SyncStatus {
+  mailboxes: string[];
+}
+
 export type ServerEvent =
   | { type: 'sync.started'; accountId: string; mailbox: string }
   | {

@@ -35,6 +35,28 @@ services:
       timeout: 3s
       retries: 10
 
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.server
+    command: ["node", "apps/backend/dist/worker.js"]
+    environment:
+      DATABASE_URL: postgresql://letter_box:letter_box_dev@postgres:5432/letter_box
+      REDIS_URL: redis://redis:6379
+      CREDENTIALS_PATH: /app/data/credentials.json
+      LETTER_BOX_ENCRYPTION_KEY: ${LETTER_BOX_ENCRYPTION_KEY:-development-encryption-key-change-before-production}
+      JWT_SECRET: ${JWT_SECRET:-development-jwt-secret-change-before-production}
+      SYNC_WORKER_CONCURRENCY: ${SYNC_WORKER_CONCURRENCY:-4}
+      LETTER_BOX_PROCESS_ROLE: worker
+    volumes:
+      - letter_box_server:/app/data
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
   postgres:
     image: postgres:17-alpine
     environment:

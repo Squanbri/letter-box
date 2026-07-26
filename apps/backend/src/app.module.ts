@@ -25,6 +25,7 @@ import { AuthGuard } from './auth/auth.guard';
 import { PostgresAuthRepository } from './auth/postgres-auth.repository';
 import { AUTH_REPOSITORY } from './auth/auth.contract';
 import { AccountOwnershipGuard } from './auth/account-ownership.guard';
+import { SyncQueueService } from './sync/sync-queue.service';
 
 @Module({
   imports: [
@@ -82,6 +83,7 @@ import { AccountOwnershipGuard } from './auth/account-ownership.guard';
     },
     EventsGateway,
     SyncLockService,
+    SyncQueueService,
   ],
 })
 export class AppModule {}

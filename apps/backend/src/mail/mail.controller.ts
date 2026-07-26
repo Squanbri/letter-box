@@ -16,11 +16,16 @@ import {
 import { MailService, SyncResult } from './mail.service';
 import { MailboxRecord, MessageRecord } from './mail.types';
 import { AccountOwnershipGuard } from '../auth/account-ownership.guard';
+import { SyncQueueService } from '../sync/sync-queue.service';
+import type { SyncStatus } from '@letter-box/contracts';
 
 @UseGuards(AccountOwnershipGuard)
 @Controller('accounts/:accountId')
 export class MailController {
-  constructor(@Inject(MailService) private readonly mail: MailService) {}
+  constructor(
+    @Inject(MailService) private readonly mail: MailService,
+    @Inject(SyncQueueService) private readonly syncQueue: SyncQueueService,
+  ) {}
 
   @Post('imap/connect')
   connect(@Param('accountId') accountId: string): Promise<{ connected: true }> {
@@ -32,7 +37,12 @@ export class MailController {
     @Param('accountId') accountId: string,
     @Query('mailbox') mailbox = 'INBOX',
   ): Promise<SyncResult> {
-    return this.mail.syncMailbox(accountId, mailbox);
+    return this.syncQueue.enqueueAndWait(accountId, mailbox);
+  }
+
+  @Get('mail/sync')
+  syncStatus(@Param('accountId') accountId: string): Promise<SyncStatus> {
+    return this.syncQueue.status(accountId);
   }
 
   @Get('mailboxes')

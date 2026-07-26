@@ -49,6 +49,14 @@ The in-process promise cache still deduplicates identical calls inside one
 server instance, while Redis prevents another instance from starting the same
 account/mailbox job. Leases are renewed while a long synchronization is active.
 
+Mailbox synchronization is submitted to a durable BullMQ queue and executed by
+a separate worker process. The API may wait for a result for transport
+compatibility, but disconnecting the HTTP client does not cancel the job.
+Identical active `accountId + mailbox` jobs share one queue job. Failed jobs use
+bounded exponential retries. Before each job the worker reloads encrypted
+credentials from the shared server credential volume, so it does not depend on
+API process memory.
+
 Existing installations use the explicit `db:import:sqlite` command. It reads
 SQLite in read-only mode and upserts all account, mailbox state, mailbox, and
 message rows in one PostgreSQL transaction. Target tables are locked during
@@ -59,9 +67,9 @@ runtime.
 
 ## Target infrastructure
 
-`compose.yaml` provisions the server, PostgreSQL and Redis. PostgreSQL is the
-source of truth. Redis already coordinates synchronization locks and can later
-back durable synchronization and AI job queues.
+`compose.yaml` provisions the API server, sync worker, PostgreSQL and Redis.
+PostgreSQL is the source of truth. Redis backs synchronization locks and the
+durable BullMQ queue, and can later host separate AI job queues.
 
 REST remains the command/query transport. Socket.IO events notify all connected
 clients about synchronization progress and later about message mutations.
