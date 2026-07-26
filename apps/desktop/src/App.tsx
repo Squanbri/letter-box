@@ -3,6 +3,7 @@ import {
   api,
   type AccountInput,
   type AccountStatus,
+  type MailboxInfo,
   type Message,
   type SyncResult,
 } from './api';
@@ -181,7 +182,9 @@ export function App() {
               account={account}
               syncing={syncingIds.has(account.id)}
               syncVersion={syncVersions[account.id] ?? 0}
-              onSync={() => syncAccount(account.id)}
+              onSync={(mailbox) => mailbox === 'INBOX'
+                ? syncAccount(account.id)
+                : api.sync(account.id, mailbox).finally(refresh)}
               onAccountChanged={refresh}
               onUnreadChange={(delta) => setAccounts((current) =>
                 current?.map((item) => item.id === account.id
@@ -322,26 +325,120 @@ function Mailbox({
   account: AccountStatus;
   syncing: boolean;
   syncVersion: number;
-  onSync: () => Promise<unknown>;
+  onSync: (mailbox: string) => Promise<unknown>;
   onAccountChanged: () => Promise<void>;
   onUnreadChange: (delta: number) => void;
 }) {
   const [messages, setMessages] = useState<Message[]>([]);
+  const [mailboxes, setMailboxes] = useState<MailboxInfo[]>([
+    {
+      path: 'INBOX', name: 'Входящие', delimiter: '/', specialUse: '\\Inbox',
+      totalCount: 0, unreadCount: 0,
+    },
+  ]);
+  const [selectedMailbox, setSelectedMailbox] = useState(
+    () => localStorage.getItem(`letter-box.mailbox.${account.id}`) ?? 'INBOX',
+  );
   const [selected, setSelected] = useState<Message | null>(null);
   const [loading, setLoading] = useState(true);
+  const [folderSyncing, setFolderSyncing] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(true);
   const [openingUid, setOpeningUid] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const onSyncRef = useRef(onSync);
+  useEffect(() => { onSyncRef.current = onSync; }, [onSync]);
   const load = useCallback(async () => {
-    try { setMessages(await api.messages(account.id)); setError(null); }
+    try {
+      const page = await api.messages(account.id, selectedMailbox);
+      setMessages(page);
+      setHasMore(page.length === 50);
+      setError(null);
+    }
     catch (reason) { setError(errorMessage(reason)); }
     finally { setLoading(false); }
-  }, [account.id]);
+  }, [account.id, selectedMailbox]);
   useEffect(() => { setSelected(null); }, [account.id]);
   useEffect(() => { setLoading(true); void load(); }, [load, syncVersion]);
+  useEffect(() => {
+    let active = true;
+    setFolderSyncing(true);
+    void onSyncRef.current(selectedMailbox)
+      .then(() => active ? load() : undefined)
+      .catch((reason) => {
+        if (active) setError(errorMessage(reason));
+      })
+      .finally(() => {
+        if (active) setFolderSyncing(false);
+      });
+    return () => { active = false; };
+  }, [account.id, selectedMailbox, load]);
+  useEffect(() => {
+    localStorage.setItem(`letter-box.mailbox.${account.id}`, selectedMailbox);
+    setSelected(null);
+    setMessages([]);
+    setHasMore(true);
+  }, [account.id, selectedMailbox]);
+  useEffect(() => {
+    let active = true;
+    void api.mailboxes(account.id).then((stored) => {
+      if (active) setMailboxes(stored);
+    });
+    void api.syncMailboxes(account.id).then((synced) => {
+      if (active) setMailboxes(synced);
+    }).catch((reason) => {
+      if (active) setError(errorMessage(reason));
+    });
+    return () => { active = false; };
+  }, [account.id]);
+  useEffect(() => {
+    if (!mailboxes.some((mailbox) => mailbox.path === selectedMailbox)) {
+      setSelectedMailbox(mailboxes.find((mailbox) => mailbox.specialUse === '\\Inbox')?.path ?? mailboxes[0]?.path ?? 'INBOX');
+    }
+  }, [mailboxes, selectedMailbox]);
   const sync = async () => {
-    setError(null);
-    try { await onSync(); }
+    setFolderSyncing(true); setError(null);
+    try { await onSync(selectedMailbox); await load(); }
     catch (reason) { setError(errorMessage(reason)); }
+    finally { setFolderSyncing(false); }
+  };
+  const loadMore = async () => {
+    if (loadingMore || !hasMore || messages.length === 0) return;
+    setLoadingMore(true);
+    try {
+      let page = await api.messages(
+        account.id,
+        selectedMailbox,
+        messages.length,
+      );
+      if (page.length === 0) {
+        const beforeUid = Math.min(...messages.map((message) => message.uid));
+        const result = await api.loadOlder(account.id, selectedMailbox, beforeUid);
+        if (result.loaded === 0) {
+          setHasMore(false);
+          return;
+        }
+        page = await api.messages(
+          account.id,
+          selectedMailbox,
+          messages.length,
+        );
+      }
+      setMessages((current) => [
+        ...current,
+        ...page.filter((next) => !current.some(
+          (item) => item.uid === next.uid && item.mailbox === next.mailbox,
+        )),
+      ]);
+      if (page.length < 50) {
+        const total = mailboxes.find((mailbox) => mailbox.path === selectedMailbox)?.totalCount;
+        if (total === undefined || messages.length + page.length >= total) setHasMore(false);
+      }
+    } catch (reason) {
+      setError(errorMessage(reason));
+    } finally {
+      setLoadingMore(false);
+    }
   };
   const openMessage = async (message: Message) => {
     setSelected(message); setOpeningUid(message.uid);
@@ -352,6 +449,8 @@ function Mailbox({
     catch (reason) { setError(errorMessage(reason)); }
     finally { setOpeningUid(null); }
   };
+  const currentFolderSyncing = folderSyncing
+    || (selectedMailbox === 'INBOX' && syncing);
   const changeSeen = async (message: Message, seen: boolean) => {
     const previousFlags = message.flags;
     const nextFlags = withSeen(previousFlags, seen);
@@ -361,7 +460,7 @@ function Mailbox({
         : item;
     setMessages((current) => current.map(applyFlags));
     setSelected((current) => current ? applyFlags(current) : current);
-    onUnreadChange(seen ? -1 : 1);
+    if (message.mailbox === 'INBOX') onUnreadChange(seen ? -1 : 1);
     try {
       const updated = await api.setSeen(account.id, message.uid, seen, message.mailbox);
       setMessages((current) => current.map((item) =>
@@ -382,24 +481,48 @@ function Mailbox({
           : item;
       setMessages((current) => current.map(rollback));
       setSelected((current) => current ? rollback(current) : current);
-      onUnreadChange(seen ? 1 : -1);
+      if (message.mailbox === 'INBOX') onUnreadChange(seen ? 1 : -1);
       setError(errorMessage(reason));
     }
   };
   return (
     <section className="mail-page">
       <header className="page-header">
-        <div><h1>Входящие</h1><span>{account.email}</span></div>
-        <button onClick={() => void sync()} disabled={syncing}>
-          {syncing && <Spinner />}
-          {syncing ? 'Синхронизация…' : 'Обновить'}
+        <div><h1>{mailboxTitle(mailboxes, selectedMailbox)}</h1><span>{account.email}</span></div>
+        <button onClick={() => void sync()} disabled={currentFolderSyncing}>
+          {currentFolderSyncing && <Spinner />}
+          {currentFolderSyncing ? 'Синхронизация…' : 'Обновить'}
         </button>
       </header>
       {error && <div className="error-banner">{error}</div>}
       <div className="mail-layout">
-        <section className="message-list">
+        <aside className="mailbox-list" aria-label="Почтовые папки">
+          {mailboxes.map((mailbox) => (
+            <button
+              key={mailbox.path}
+              className={selectedMailbox === mailbox.path ? 'selected' : ''}
+              onClick={() => setSelectedMailbox(mailbox.path)}
+              title={mailbox.path}
+            >
+              <span>{mailboxIcon(mailbox.specialUse)}</span>
+              <strong>{mailboxDisplayName(mailbox)}</strong>
+              {mailbox.unreadCount > 0 && <small>{formatCount(mailbox.unreadCount)}</small>}
+            </button>
+          ))}
+        </aside>
+        <section
+          className="message-list"
+          onScroll={(event) => {
+            const element = event.currentTarget;
+            if (element.scrollHeight - element.scrollTop - element.clientHeight < 180) {
+              void loadMore();
+            }
+          }}
+        >
           {messages.length === 0 ? (
-            loading ? <LoadingState text="Загрузка писем…" /> : <Empty text="Писем пока нет" />
+            loading || currentFolderSyncing
+              ? <LoadingState text="Загрузка писем…" />
+              : <Empty text="Писем пока нет" />
           ) :
             messages.map((message) => (
               <button key={`${message.mailbox}:${message.uid}`} className={`message-row ${selected?.uid === message.uid ? 'selected' : ''} ${isSeen(message) ? '' : 'unread'}`} onClick={() => void openMessage(message)}>
@@ -407,6 +530,7 @@ function Mailbox({
                 <span className="subject">{message.subject || 'Без темы'}</span><span className="meta">{formatSize(message.size)}</span>
               </button>
             ))}
+          {loadingMore && <div className="list-loader"><Spinner />Загрузка старых писем…</div>}
         </section>
         <article className="message-view">
           {!selected ? <Empty text="Выберите письмо" /> : <>
@@ -524,6 +648,32 @@ function errorMessage(reason: unknown) { return reason instanceof Error ? reason
 function formatDate(value: string) { const date = new Date(value); return date.toDateString() === new Date().toDateString() ? date.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }) : date.toLocaleDateString('ru-RU', { day: '2-digit', month: 'short' }); }
 function formatSize(bytes: number) { return bytes < 1024 * 1024 ? `${Math.max(1, Math.round(bytes / 1024))} КБ` : `${(bytes / 1024 / 1024).toFixed(1)} МБ`; }
 function formatCount(count: number) { return count > 99 ? '99+' : String(count); }
+function mailboxTitle(mailboxes: MailboxInfo[], path: string) {
+  const mailbox = mailboxes.find((item) => item.path === path);
+  return mailbox ? mailboxDisplayName(mailbox) : path;
+}
+function mailboxDisplayName(mailbox: MailboxInfo) {
+  const names: Record<string, string> = {
+    '\\Inbox': 'Входящие',
+    '\\Sent': 'Отправленные',
+    '\\Drafts': 'Черновики',
+    '\\Junk': 'Спам',
+    '\\Trash': 'Корзина',
+    '\\Archive': 'Архив',
+  };
+  return mailbox.specialUse ? names[mailbox.specialUse] ?? mailbox.name : mailbox.name;
+}
+function mailboxIcon(specialUse: string | null) {
+  const icons: Record<string, string> = {
+    '\\Inbox': '↓',
+    '\\Sent': '↑',
+    '\\Drafts': '✎',
+    '\\Junk': '!',
+    '\\Trash': '⌫',
+    '\\Archive': '□',
+  };
+  return specialUse ? icons[specialUse] ?? '•' : '•';
+}
 function isSeen(message: Message) { return message.flags.includes('\\Seen'); }
 function withSeen(flags: string[], seen: boolean) {
   const next = new Set(flags);

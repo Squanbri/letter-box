@@ -5,7 +5,12 @@ import {
 } from '@nestjs/common';
 import { ImapFlow, type FetchMessageObject, type ImapFlowOptions } from 'imapflow';
 import { simpleParser } from 'mailparser';
-import { MailboxChanges, MessageFlags, MessageMetadata } from './mail.types';
+import {
+  MailboxChanges,
+  MailboxRecord,
+  MessageFlags,
+  MessageMetadata,
+} from './mail.types';
 import { AccountService } from '../account/account.service';
 
 @Injectable()
@@ -13,18 +18,37 @@ export class ImapService {
   constructor(@Inject(AccountService) private readonly accounts: AccountService) {}
 
   async testConnection(accountId: string): Promise<void> {
-    await this.withInbox(accountId, async () => undefined);
+    await this.withMailbox(accountId, 'INBOX', async () => undefined);
+  }
+
+  async fetchMailboxes(accountId: string): Promise<MailboxRecord[]> {
+    return this.withClient(accountId, async (client) => {
+      const mailboxes = await client.list({
+        statusQuery: { messages: true, unseen: true },
+      });
+      return mailboxes
+        .filter((mailbox) => mailbox.listed && !mailbox.flags.has('\\Noselect'))
+        .map((mailbox) => ({
+          path: mailbox.path,
+          name: mailbox.name,
+          delimiter: mailbox.delimiter,
+          specialUse: mailbox.specialUse ?? null,
+          totalCount: mailbox.status?.messages ?? 0,
+          unreadCount: mailbox.status?.unseen ?? 0,
+        }));
+    });
   }
 
   async fetchChanges(
     accountId: string,
+    mailbox: string,
     knownUids: number[],
     expectedUidValidity?: string,
-    initialLimit = 500,
+    initialLimit = 50,
   ): Promise<MailboxChanges> {
-    return this.withInbox(accountId, async (client) => {
+    return this.withMailbox(accountId, mailbox, async (client) => {
       if (!client.mailbox) {
-        throw new BadGatewayException('Папка INBOX не открыта');
+        throw new BadGatewayException(`Папка ${mailbox} не открыта`);
       }
       const uidValidity = String(client.mailbox.uidValidity);
       const reset = Boolean(expectedUidValidity && expectedUidValidity !== uidValidity);
@@ -64,8 +88,34 @@ export class ImapService {
     });
   }
 
-  async fetchBody(accountId: string, uid: number): Promise<{ text: string | null; html: string | null }> {
-    return this.withInbox(accountId, async (client) => {
+  async fetchOlderMetadata(
+    accountId: string,
+    mailbox: string,
+    beforeUid: number | undefined,
+    limit = 50,
+  ): Promise<MessageMetadata[]> {
+    return this.withMailbox(accountId, mailbox, async (client) => {
+      const serverUids = await client.search({ all: true }, { uid: true }) || [];
+      const candidates = beforeUid
+        ? serverUids.filter((uid) => uid < beforeUid)
+        : serverUids;
+      const pageUids = candidates.slice(-limit);
+      const messages: MessageMetadata[] = [];
+      if (pageUids.length > 0) {
+        for await (const message of client.fetch(
+          pageUids,
+          { uid: true, envelope: true, flags: true, size: true },
+          { uid: true },
+        )) {
+          messages.push(this.toMetadata(message));
+        }
+      }
+      return messages;
+    });
+  }
+
+  async fetchBody(accountId: string, mailbox: string, uid: number): Promise<{ text: string | null; html: string | null }> {
+    return this.withMailbox(accountId, mailbox, async (client) => {
       const message = await client.fetchOne(uid, { source: true }, { uid: true });
 
       if (!message || !message.source) {
@@ -80,8 +130,8 @@ export class ImapService {
     });
   }
 
-  async setSeen(accountId: string, uid: number, seen: boolean): Promise<void> {
-    await this.withInbox(accountId, async (client) => {
+  async setSeen(accountId: string, mailbox: string, uid: number, seen: boolean): Promise<void> {
+    await this.withMailbox(accountId, mailbox, async (client) => {
       const update = seen
         ? client.messageFlagsAdd(uid, ['\\Seen'], { uid: true })
         : client.messageFlagsRemove(uid, ['\\Seen'], { uid: true });
@@ -91,7 +141,22 @@ export class ImapService {
     });
   }
 
-  private async withInbox<T>(
+  private async withMailbox<T>(
+    accountId: string,
+    mailbox: string,
+    operation: (client: ImapFlow) => Promise<T>,
+  ): Promise<T> {
+    return this.withClient(accountId, async (client) => {
+      const lock = await client.getMailboxLock(mailbox);
+      try {
+        return await operation(client);
+      } finally {
+        lock.release();
+      }
+    });
+  }
+
+  private async withClient<T>(
     accountId: string,
     operation: (client: ImapFlow) => Promise<T>,
   ): Promise<T> {
@@ -99,12 +164,7 @@ export class ImapService {
 
     try {
       await client.connect();
-      const lock = await client.getMailboxLock('INBOX');
-      try {
-        return await operation(client);
-      } finally {
-        lock.release();
-      }
+      return await operation(client);
     } catch (error) {
       if (error instanceof BadGatewayException) {
         throw error;

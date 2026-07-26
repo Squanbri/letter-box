@@ -2,6 +2,7 @@ import {
   Body,
   BadRequestException,
   Controller,
+  DefaultValuePipe,
   Get,
   Inject,
   Param,
@@ -11,7 +12,7 @@ import {
   Query,
 } from '@nestjs/common';
 import { MailService, SyncResult } from './mail.service';
-import { MessageRecord } from './mail.types';
+import { MailboxRecord, MessageRecord } from './mail.types';
 
 @Controller('accounts/:accountId')
 export class MailController {
@@ -23,16 +24,44 @@ export class MailController {
   }
 
   @Post('mail/sync')
-  sync(@Param('accountId') accountId: string): Promise<SyncResult> {
-    return this.mail.syncInbox(accountId);
+  sync(
+    @Param('accountId') accountId: string,
+    @Query('mailbox') mailbox = 'INBOX',
+  ): Promise<SyncResult> {
+    return this.mail.syncMailbox(accountId, mailbox);
+  }
+
+  @Get('mailboxes')
+  mailboxes(@Param('accountId') accountId: string): MailboxRecord[] {
+    return this.mail.listMailboxes(accountId);
+  }
+
+  @Post('mailboxes/sync')
+  syncMailboxes(@Param('accountId') accountId: string): Promise<MailboxRecord[]> {
+    return this.mail.syncMailboxes(accountId);
   }
 
   @Get('messages')
   list(
     @Param('accountId') accountId: string,
     @Query('mailbox') mailbox = 'INBOX',
+    @Query('limit', new DefaultValuePipe(50), ParseIntPipe) limit = 50,
+    @Query('offset', new DefaultValuePipe(0), ParseIntPipe) offset = 0,
   ): MessageRecord[] {
-    return this.mail.listMessages(accountId, mailbox);
+    return this.mail.listMessages(accountId, mailbox, limit, offset);
+  }
+
+  @Post('mail/load-older')
+  loadOlder(
+    @Param('accountId') accountId: string,
+    @Query('mailbox') mailbox = 'INBOX',
+    @Query('beforeUid') beforeUid?: string,
+  ): Promise<{ loaded: number }> {
+    const parsedUid = beforeUid === undefined ? undefined : Number(beforeUid);
+    if (parsedUid !== undefined && (!Number.isInteger(parsedUid) || parsedUid <= 0)) {
+      throw new BadRequestException('beforeUid должен быть положительным UID');
+    }
+    return this.mail.loadOlder(accountId, mailbox, parsedUid);
   }
 
   @Get('messages/:uid')
