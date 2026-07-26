@@ -12,5 +12,13 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     emptyOutDir: true,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          mantine: ['@mantine/core', '@mantine/hooks'],
+          query: ['@tanstack/react-query'],
+        },
+      },
+    },
   },
 });
