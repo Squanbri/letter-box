@@ -19,7 +19,7 @@ export interface AccountStatus {
   id: string;
   provider: 'mailru' | 'yandex';
   email: string;
-  status: 'connected' | 'disconnected' | 'error';
+  status: 'connected' | 'disconnected' | 'syncing' | 'error';
   lastError: string | null;
   lastSyncAt: string | null;
 }
@@ -42,6 +42,9 @@ export class AccountService implements OnModuleInit {
   async onModuleInit(): Promise<void> {
     const stored = await getRuntimeOptions().credentialStore?.loadAll() ?? [];
     const now = new Date().toISOString();
+    this.database.db.prepare(
+      "UPDATE accounts SET status = 'disconnected', updated_at = ?",
+    ).run(now);
     const upsert = this.database.db.prepare(`
       INSERT INTO accounts (id, provider, email, status, created_at, updated_at)
       VALUES (?, ?, ?, 'disconnected', ?, ?)

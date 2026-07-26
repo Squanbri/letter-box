@@ -129,12 +129,15 @@ button.tab,
 .overview-account small { margin-top: 3px; color: #7b7e77; }
 .status-dot { width: 10px; height: 10px; border-radius: 50%; background: #aaa; }
 .status-dot.connected { background: #3d936b; }
+.status-dot.syncing { background: #4d7fa6; animation: status-pulse 1s ease-in-out infinite; }
 .status-dot.error { background: #c94d3d; }
 .status-label { color: #686b64; font-size: 12px; }
 .overview-account > p { margin: 0; padding: 0 18px 14px 41px; color: #a23c30; font-size: 12px; }
 .overview-account footer { display: flex; align-items: center; justify-content: space-between; padding: 11px 18px; border-top: 1px solid #ecece8; }
 .overview-account footer > small { color: #85877f; }
 .overview-account footer div { display: flex; gap: 7px; }
+.page-actions { display: flex; gap: 8px; }
+.page-header .page-actions .secondary { color: #40433d; background: #e5e8e1; }
 .overview button.secondary { color: #40433d; background: #e5e8e1; }
 .overview button.danger { color: #a03b30; background: #f8e8e5; }
 .empty-overview { display: grid; place-items: center; gap: 8px; min-height: 260px; color: #777a73; }
@@ -553,4 +556,8 @@ button.secondary {
   to {
     transform: rotate(360deg);
   }
+}
+
+@keyframes status-pulse {
+  50% { opacity: .35; transform: scale(.8); }
 }

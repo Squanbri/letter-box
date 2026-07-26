@@ -10,6 +10,8 @@ export function App() {
   const [active, setActive] = useState<string>(() => localStorage.getItem(ACTIVE_KEY) ?? 'overview');
   const [editing, setEditing] = useState<AccountStatus | 'new' | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [syncingIds, setSyncingIds] = useState<Set<string>>(new Set());
+  const [syncVersions, setSyncVersions] = useState<Record<string, number>>({});
 
   const refresh = useCallback(async () => {
     try {
@@ -41,6 +43,31 @@ export function App() {
     setTabs((current) => current.filter((item) => item !== id));
     if (active === id) setActive('overview');
   };
+  const syncAccount = useCallback(async (id: string) => {
+    setSyncingIds((current) => new Set(current).add(id));
+    setAccounts((current) => current?.map((account) =>
+      account.id === id ? { ...account, status: 'syncing' } : account,
+    ) ?? null);
+    try {
+      await api.sync(id);
+      setSyncVersions((current) => ({ ...current, [id]: (current[id] ?? 0) + 1 }));
+    } finally {
+      setSyncingIds((current) => {
+        const next = new Set(current);
+        next.delete(id);
+        return next;
+      });
+      await refresh();
+    }
+  }, [refresh]);
+  const syncAll = async () => {
+    const ids = accounts?.map((account) => account.id) ?? [];
+    const results = await Promise.allSettled(ids.map(syncAccount));
+    const failures = results.filter((result) => result.status === 'rejected');
+    if (failures.length > 0) {
+      setError(`Не удалось синхронизировать аккаунтов: ${failures.length}`);
+    }
+  };
 
   if (!accounts) {
     return <AppStatus error={Boolean(error)} detail={error ?? 'Загрузка аккаунтов…'} retry={refresh} />;
@@ -70,6 +97,8 @@ export function App() {
           onAdd={() => setEditing('new')}
           onOpen={openAccount}
           onReconnect={setEditing}
+          syncingIds={syncingIds}
+          onSyncAll={() => void syncAll()}
           onDelete={async (account) => {
             if (!window.confirm(`Удалить аккаунт ${account.email} и все его локальные данные?`)) return;
             try {
@@ -84,7 +113,12 @@ export function App() {
         const account = accounts.find((item) => item.id === id);
         return account ? (
           <div className={active === id ? 'tab-panel active' : 'tab-panel'} key={id}>
-            <Mailbox account={account} onAccountChanged={refresh} />
+            <Mailbox
+              account={account}
+              syncing={syncingIds.has(account.id)}
+              syncVersion={syncVersions[account.id] ?? 0}
+              onSync={() => syncAccount(account.id)}
+            />
           </div>
         ) : null;
       })}
@@ -104,19 +138,27 @@ export function App() {
 }
 
 function Overview({
-  accounts, onAdd, onOpen, onReconnect, onDelete,
+  accounts, syncingIds, onAdd, onOpen, onReconnect, onDelete, onSyncAll,
 }: {
   accounts: AccountStatus[];
+  syncingIds: Set<string>;
   onAdd: () => void;
   onOpen: (id: string) => void;
   onReconnect: (account: AccountStatus) => void;
   onDelete: (account: AccountStatus) => void;
+  onSyncAll: () => void;
 }) {
   return (
     <section className="overview">
       <header className="page-header">
         <div><h1>Обзор</h1><span>{accounts.length} подключённых аккаунтов</span></div>
-        <button onClick={onAdd}>Добавить аккаунт</button>
+        <div className="page-actions">
+          <button className="secondary" onClick={onSyncAll} disabled={accounts.length === 0 || syncingIds.size > 0}>
+            {syncingIds.size > 0 && <Spinner />}
+            {syncingIds.size > 0 ? `Обновление ${syncingIds.size}…` : 'Обновить все'}
+          </button>
+          <button onClick={onAdd}>Добавить аккаунт</button>
+        </div>
       </header>
       <div className="account-grid">
         {accounts.map((account) => (
@@ -144,14 +186,15 @@ function Overview({
   );
 }
 
-function Mailbox({ account, onAccountChanged }: {
+function Mailbox({ account, syncing, syncVersion, onSync }: {
   account: AccountStatus;
-  onAccountChanged: () => Promise<void>;
+  syncing: boolean;
+  syncVersion: number;
+  onSync: () => Promise<void>;
 }) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [selected, setSelected] = useState<Message | null>(null);
   const [loading, setLoading] = useState(true);
-  const [syncing, setSyncing] = useState(false);
   const [openingUid, setOpeningUid] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const load = useCallback(async () => {
@@ -159,12 +202,12 @@ function Mailbox({ account, onAccountChanged }: {
     catch (reason) { setError(errorMessage(reason)); }
     finally { setLoading(false); }
   }, [account.id]);
-  useEffect(() => { setSelected(null); setLoading(true); void load(); }, [load]);
+  useEffect(() => { setSelected(null); }, [account.id]);
+  useEffect(() => { setLoading(true); void load(); }, [load, syncVersion]);
   const sync = async () => {
-    setSyncing(true); setError(null);
-    try { await api.sync(account.id); await load(); await onAccountChanged(); }
-    catch (reason) { setError(errorMessage(reason)); await onAccountChanged(); }
-    finally { setSyncing(false); }
+    setError(null);
+    try { await onSync(); }
+    catch (reason) { setError(errorMessage(reason)); }
   };
   const openMessage = async (message: Message) => {
     setSelected(message); setOpeningUid(message.uid);
@@ -243,7 +286,7 @@ function AppStatus({ detail, error, retry }: { detail: string; error: boolean; r
 }
 function readTabs(): string[] { try { const value = JSON.parse(localStorage.getItem(TABS_KEY) ?? '[]'); return Array.isArray(value) ? value.filter((id): id is string => typeof id === 'string') : []; } catch { return []; } }
 function providerName(provider: AccountStatus['provider']) { return provider === 'mailru' ? 'Mail.ru' : 'Яндекс'; }
-function statusName(status: AccountStatus['status']) { return status === 'connected' ? 'Подключён' : status === 'error' ? 'Требует внимания' : 'Не проверен'; }
+function statusName(status: AccountStatus['status']) { return status === 'connected' ? 'Подключён' : status === 'syncing' ? 'Синхронизация…' : status === 'error' ? 'Требует внимания' : 'Не проверен'; }
 function errorMessage(reason: unknown) { return reason instanceof Error ? reason.message : 'Произошла неизвестная ошибка'; }
 function formatDate(value: string) { const date = new Date(value); return date.toDateString() === new Date().toDateString() ? date.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }) : date.toLocaleDateString('ru-RU', { day: '2-digit', month: 'short' }); }
 function formatSize(bytes: number) { return bytes < 1024 * 1024 ? `${Math.max(1, Math.round(bytes / 1024))} КБ` : `${(bytes / 1024 / 1024).toFixed(1)} МБ`; }

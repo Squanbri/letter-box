@@ -5,7 +5,7 @@ export interface AccountStatus {
   id: string;
   email: string;
   provider: 'mailru' | 'yandex';
-  status: 'connected' | 'disconnected' | 'error';
+  status: 'connected' | 'disconnected' | 'syncing' | 'error';
   lastError: string | null;
   lastSyncAt: string | null;
 }
