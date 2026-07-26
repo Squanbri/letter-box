@@ -25,9 +25,155 @@ button {
 
 .app-shell {
   height: 100vh;
-  display: grid;
-  grid-template-rows: 76px auto 1fr;
+  display: flex;
+  flex-direction: column;
   overflow: hidden;
+}
+
+.tabbar {
+  display: flex;
+  align-items: end;
+  gap: 3px;
+  padding: 7px 16px 0 82px;
+  border-bottom: 1px solid #d2d4ce;
+  background: #e8eae5;
+  -webkit-app-region: drag;
+}
+
+.tab {
+  height: 35px;
+  display: flex;
+  align-items: center;
+  border: 0;
+  border-radius: 8px 8px 0 0;
+  color: #5f625b;
+  background: transparent;
+  -webkit-app-region: no-drag;
+}
+
+button.tab,
+.tab > button {
+  padding: 0 13px;
+  border: 0;
+  color: inherit;
+  background: transparent;
+  cursor: pointer;
+}
+
+.tab.active {
+  color: #252722;
+  background: #f8f9f6;
+}
+
+.tab .tab-close {
+  height: 24px;
+  padding: 0 9px 2px 3px;
+  color: #858880;
+  font-size: 18px;
+}
+
+.tab-panel {
+  min-height: 0;
+  flex: 1;
+  display: none;
+}
+
+.tab-panel.active {
+  display: flex;
+}
+
+.page-header {
+  height: 76px;
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  padding: 18px 24px 14px;
+  border-bottom: 1px solid #d9dad5;
+  background: rgba(248, 249, 246, 0.92);
+}
+
+.page-header h1 { margin: 0; font-size: 25px; line-height: 1; }
+.page-header span { display: block; margin-top: 5px; color: #797b74; font-size: 12px; }
+.page-header button,
+.overview button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 8px 14px;
+  border: 0;
+  border-radius: 8px;
+  color: white;
+  background: #31594a;
+  cursor: pointer;
+}
+
+.overview, .mail-page { min-height: 0; flex: 1; display: grid; grid-template-rows: auto auto 1fr; }
+.overview { overflow: auto; background: #f3f4f0; }
+.account-grid { display: grid; gap: 14px; padding: 24px; }
+.overview-account { overflow: hidden; border: 1px solid #d8dad4; border-radius: 13px; background: white; }
+.overview-account .account-main {
+  width: 100%;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 13px;
+  padding: 18px;
+  border-radius: 0;
+  color: inherit;
+  text-align: left;
+  background: transparent;
+}
+.overview-account .account-main:hover { background: #f5f7f2; }
+.overview-account strong, .overview-account small { display: block; }
+.overview-account small { margin-top: 3px; color: #7b7e77; }
+.status-dot { width: 10px; height: 10px; border-radius: 50%; background: #aaa; }
+.status-dot.connected { background: #3d936b; }
+.status-dot.error { background: #c94d3d; }
+.status-label { color: #686b64; font-size: 12px; }
+.overview-account > p { margin: 0; padding: 0 18px 14px 41px; color: #a23c30; font-size: 12px; }
+.overview-account footer { display: flex; align-items: center; justify-content: space-between; padding: 11px 18px; border-top: 1px solid #ecece8; }
+.overview-account footer > small { color: #85877f; }
+.overview-account footer div { display: flex; gap: 7px; }
+.overview button.secondary { color: #40433d; background: #e5e8e1; }
+.overview button.danger { color: #a03b30; background: #f8e8e5; }
+.empty-overview { display: grid; place-items: center; gap: 8px; min-height: 260px; color: #777a73; }
+.empty-overview strong { color: #343630; font-size: 18px; }
+.dialog-backdrop { position: fixed; inset: 0; z-index: 10; display: grid; place-items: center; padding: 24px; background: rgba(28, 31, 27, .42); backdrop-filter: blur(4px); }
+.dialog-backdrop .account-card { max-height: calc(100vh - 48px); overflow: auto; }
+
+.spinner {
+  width: 15px;
+  height: 15px;
+  flex: none;
+  display: inline-block;
+  border: 2px solid rgba(255, 255, 255, .42);
+  border-top-color: currentColor;
+  border-radius: 50%;
+  animation: status-spin .7s linear infinite;
+}
+
+.loading-state {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 30px;
+  color: #686b64;
+}
+
+.loading-state .spinner {
+  width: 24px;
+  height: 24px;
+  border-color: #d0d5cd;
+  border-top-color: #31594a;
+}
+
+.loading-state strong {
+  font-size: 13px;
+  font-weight: 500;
 }
 
 .toolbar {

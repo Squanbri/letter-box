@@ -2,7 +2,6 @@ import {
   BadGatewayException,
   Inject,
   Injectable,
-  InternalServerErrorException,
 } from '@nestjs/common';
 import { ImapFlow, type FetchMessageObject, type ImapFlowOptions } from 'imapflow';
 import { simpleParser } from 'mailparser';
@@ -13,15 +12,15 @@ import { AccountService } from '../account/account.service';
 export class ImapService {
   constructor(@Inject(AccountService) private readonly accounts: AccountService) {}
 
-  async testConnection(): Promise<void> {
-    await this.withInbox(async () => undefined);
+  async testConnection(accountId: string): Promise<void> {
+    await this.withInbox(accountId, async () => undefined);
   }
 
-  async fetchMetadata(): Promise<{
+  async fetchMetadata(accountId: string): Promise<{
     uidValidity: string;
     messages: MessageMetadata[];
   }> {
-    return this.withInbox(async (client) => {
+    return this.withInbox(accountId, async (client) => {
       const messages: MessageMetadata[] = [];
 
       for await (const message of client.fetch(
@@ -42,8 +41,8 @@ export class ImapService {
     });
   }
 
-  async fetchBody(uid: number): Promise<{ text: string | null; html: string | null }> {
-    return this.withInbox(async (client) => {
+  async fetchBody(accountId: string, uid: number): Promise<{ text: string | null; html: string | null }> {
+    return this.withInbox(accountId, async (client) => {
       const message = await client.fetchOne(uid, { source: true }, { uid: true });
 
       if (!message || !message.source) {
@@ -58,8 +57,11 @@ export class ImapService {
     });
   }
 
-  private async withInbox<T>(operation: (client: ImapFlow) => Promise<T>): Promise<T> {
-    const client = new ImapFlow(this.options());
+  private async withInbox<T>(
+    accountId: string,
+    operation: (client: ImapFlow) => Promise<T>,
+  ): Promise<T> {
+    const client = new ImapFlow(this.options(accountId));
 
     try {
       await client.connect();
@@ -73,7 +75,7 @@ export class ImapService {
       if (error instanceof BadGatewayException) {
         throw error;
       }
-      const account = this.accounts.getAccount();
+      const account = this.accounts.getConfig(accountId);
       const message = error instanceof Error ? error.message : 'Неизвестная ошибка IMAP';
       const diagnostics = this.errorDiagnostics(error);
       console.warn('[backend:imap] Ошибка подключения', {
@@ -101,14 +103,8 @@ export class ImapService {
     }
   }
 
-  private options(): ImapFlowOptions {
-    const account = this.accounts.getAccount();
-
-    if (!account) {
-      throw new InternalServerErrorException(
-        'Почтовый аккаунт ещё не подключён',
-      );
-    }
+  private options(accountId: string): ImapFlowOptions {
+    const account = this.accounts.getConfig(accountId);
 
     return {
       host: account.host,

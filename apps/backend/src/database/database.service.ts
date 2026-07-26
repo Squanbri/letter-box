@@ -17,14 +17,31 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
     mkdirSync(dirname(databasePath), { recursive: true });
     this.connection = new Database(databasePath);
     this.connection.pragma('journal_mode = WAL');
+    this.migrateLegacyMailTables();
     this.connection.exec(`
+      CREATE TABLE IF NOT EXISTS accounts (
+        id TEXT PRIMARY KEY,
+        provider TEXT NOT NULL,
+        email TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'disconnected',
+        last_error TEXT,
+        last_sync_at TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+
       CREATE TABLE IF NOT EXISTS mailbox_state (
-        mailbox TEXT PRIMARY KEY,
-        uid_validity TEXT NOT NULL
+        account_id TEXT NOT NULL,
+        mailbox TEXT NOT NULL,
+        uid_validity TEXT NOT NULL,
+        PRIMARY KEY (account_id, mailbox),
+        FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE
       );
 
       CREATE TABLE IF NOT EXISTS messages (
-        uid INTEGER PRIMARY KEY,
+        account_id TEXT NOT NULL,
+        mailbox TEXT NOT NULL,
+        uid INTEGER NOT NULL,
         subject TEXT,
         sender_name TEXT,
         sender_address TEXT,
@@ -33,12 +50,15 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
         size INTEGER NOT NULL,
         body_text TEXT,
         body_html TEXT,
-        body_loaded_at TEXT
+        body_loaded_at TEXT,
+        PRIMARY KEY (account_id, mailbox, uid),
+        FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE
       );
 
       CREATE INDEX IF NOT EXISTS idx_messages_received_at
-      ON messages(received_at DESC);
+      ON messages(account_id, mailbox, received_at DESC);
     `);
+    this.connection.pragma('foreign_keys = ON');
 
     for (const path of [databasePath, `${databasePath}-shm`, `${databasePath}-wal`]) {
       if (existsSync(path)) {
@@ -55,10 +75,23 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
     return this.connection;
   }
 
-  clearMailData(): void {
+  clearAccountData(accountId: string): void {
     this.connection.transaction(() => {
-      this.connection.prepare('DELETE FROM messages').run();
-      this.connection.prepare('DELETE FROM mailbox_state').run();
+      this.connection.prepare('DELETE FROM messages WHERE account_id = ?').run(accountId);
+      this.connection.prepare('DELETE FROM mailbox_state WHERE account_id = ?').run(accountId);
     })();
+  }
+
+  private migrateLegacyMailTables(): void {
+    const columns = (table: string) => this.connection
+      .prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>;
+    const messages = columns('messages');
+    const mailboxState = columns('mailbox_state');
+    if (messages.length > 0 && !messages.some((column) => column.name === 'account_id')) {
+      this.connection.exec('DROP TABLE messages');
+    }
+    if (mailboxState.length > 0 && !mailboxState.some((column) => column.name === 'account_id')) {
+      this.connection.exec('DROP TABLE mailbox_state');
+    }
   }
 }
