@@ -6,86 +6,47 @@ import {
   OnModuleInit,
 } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
-import { DatabaseService } from '../database/database.service';
 import { AccountConfig, getRuntimeOptions } from '../runtime';
+import type { AccountRow } from './account.repository';
+import {
+  ACCOUNT_REPOSITORY,
+  AccountRepositoryContract,
+} from '../database/repository.contracts';
+import type {
+  AccountInput,
+  AccountStatus as ContractAccountStatus,
+} from '@letter-box/contracts';
 
-export interface SaveAccountInput {
-  provider: 'mailru' | 'yandex';
-  email: string;
-  password: string;
-}
-
-export interface AccountStatus {
-  id: string;
-  provider: 'mailru' | 'yandex';
-  email: string;
-  status: 'connected' | 'disconnected' | 'syncing' | 'error';
-  lastError: string | null;
-  lastSyncAt: string | null;
-  unreadCount: number;
-}
-
-interface AccountRow {
-  id: string;
-  provider: 'mailru' | 'yandex';
-  email: string;
-  status: AccountStatus['status'];
-  last_error: string | null;
-  last_sync_at: string | null;
-  unread_count: number;
-}
+export type SaveAccountInput = AccountInput;
+export type AccountStatus = ContractAccountStatus;
 
 @Injectable()
 export class AccountService implements OnModuleInit {
   private readonly credentials = new Map<string, AccountConfig>();
 
-  constructor(@Inject(DatabaseService) private readonly database: DatabaseService) {}
+  constructor(
+    @Inject(ACCOUNT_REPOSITORY)
+    private readonly repository: AccountRepositoryContract,
+  ) {}
 
   async onModuleInit(): Promise<void> {
     const stored = await getRuntimeOptions().credentialStore?.loadAll() ?? [];
     const now = new Date().toISOString();
-    this.database.db.prepare(
-      "UPDATE accounts SET status = 'disconnected', updated_at = ?",
-    ).run(now);
-    const upsert = this.database.db.prepare(`
-      INSERT INTO accounts (id, provider, email, status, created_at, updated_at)
-      VALUES (?, ?, ?, 'disconnected', ?, ?)
-      ON CONFLICT(id) DO UPDATE SET
-        provider = excluded.provider, email = excluded.email, updated_at = excluded.updated_at
-    `);
+    if (process.env.LETTER_BOX_PROCESS_ROLE !== 'worker') {
+      await this.repository.resetConnectionStatuses(now);
+    }
     for (const account of stored) {
       this.credentials.set(account.id, account);
-      upsert.run(account.id, account.provider, account.email, now, now);
+      await this.repository.upsertStored(account, now);
     }
   }
 
-  list(): AccountStatus[] {
-    const rows = this.database.db.prepare(
-      `SELECT id, provider, email, status, last_error, last_sync_at,
-        (
-          SELECT COUNT(*) FROM messages
-          WHERE account_id = accounts.id AND mailbox = 'INBOX'
-            AND NOT EXISTS (
-              SELECT 1 FROM json_each(messages.flags) WHERE value = '\\Seen'
-            )
-        ) AS unread_count
-      FROM accounts ORDER BY created_at`,
-    ).all() as AccountRow[];
-    return rows.map(this.mapStatus);
+  async list(userId: string | null = null): Promise<AccountStatus[]> {
+    return (await this.repository.list(userId)).map(this.mapStatus);
   }
 
-  get(accountId: string): AccountStatus {
-    const row = this.database.db.prepare(
-      `SELECT id, provider, email, status, last_error, last_sync_at,
-        (
-          SELECT COUNT(*) FROM messages
-          WHERE account_id = accounts.id AND mailbox = 'INBOX'
-            AND NOT EXISTS (
-              SELECT 1 FROM json_each(messages.flags) WHERE value = '\\Seen'
-            )
-        ) AS unread_count
-      FROM accounts WHERE id = ?`,
-    ).get(accountId) as AccountRow | undefined;
+  async get(accountId: string, userId: string | null = null): Promise<AccountStatus> {
+    const row = await this.repository.find(userId, accountId);
     if (!row) throw new NotFoundException('Аккаунт не найден');
     return this.mapStatus(row);
   }
@@ -94,6 +55,16 @@ export class AccountService implements OnModuleInit {
     const account = this.credentials.get(accountId);
     if (!account) throw new NotFoundException('Credentials аккаунта не найдены');
     return account;
+  }
+
+  async reloadCredential(accountId: string): Promise<void> {
+    const stored = await getRuntimeOptions().credentialStore?.loadAll() ?? [];
+    const account = stored.find((candidate) => candidate.id === accountId);
+    if (!account) {
+      this.credentials.delete(accountId);
+      throw new NotFoundException('Credentials аккаунта не найдены');
+    }
+    this.credentials.set(accountId, account);
   }
 
   prepare(input: SaveAccountInput, id: string = randomUUID()): AccountConfig {
@@ -110,36 +81,35 @@ export class AccountService implements OnModuleInit {
     this.credentials.set(account.id, account);
   }
 
-  async persist(account: AccountConfig): Promise<void> {
+  async persist(account: AccountConfig, userId: string | null = null): Promise<void> {
     await getRuntimeOptions().credentialStore?.save(account);
     this.credentials.set(account.id, account);
     const now = new Date().toISOString();
-    this.database.db.prepare(`
-      INSERT INTO accounts (id, provider, email, status, last_error, created_at, updated_at)
-      VALUES (?, ?, ?, 'connected', NULL, ?, ?)
-      ON CONFLICT(id) DO UPDATE SET provider = excluded.provider, email = excluded.email,
-        status = 'connected', last_error = NULL, updated_at = excluded.updated_at
-    `).run(account.id, account.provider, account.email, now, now);
+    await this.repository.saveConnected(account, userId, now);
   }
 
-  setStatus(accountId: string, status: AccountStatus['status'], error: string | null = null): void {
-    this.database.db.prepare(
-      'UPDATE accounts SET status = ?, last_error = ?, updated_at = ? WHERE id = ?',
-    ).run(status, error, new Date().toISOString(), accountId);
+  async setStatus(
+    accountId: string,
+    status: AccountStatus['status'],
+    error: string | null = null,
+  ): Promise<void> {
+    await this.repository.setStatus(accountId, status, error, new Date().toISOString());
   }
 
-  markSynced(accountId: string): void {
+  async markSynced(accountId: string): Promise<void> {
     const now = new Date().toISOString();
-    this.database.db.prepare(
-      "UPDATE accounts SET status = 'connected', last_error = NULL, last_sync_at = ?, updated_at = ? WHERE id = ?",
-    ).run(now, now, accountId);
+    await this.repository.markSynced(accountId, now);
   }
 
-  async remove(accountId: string): Promise<void> {
-    this.get(accountId);
+  async remove(accountId: string, userId: string | null = null): Promise<void> {
+    await this.get(accountId, userId);
     await getRuntimeOptions().credentialStore?.delete(accountId);
     this.credentials.delete(accountId);
-    this.database.db.prepare('DELETE FROM accounts WHERE id = ?').run(accountId);
+    await this.repository.remove(userId, accountId);
+  }
+
+  async clearMailData(accountId: string): Promise<void> {
+    await this.repository.clearMailData(accountId);
   }
 
   private mapStatus(row: AccountRow): AccountStatus {

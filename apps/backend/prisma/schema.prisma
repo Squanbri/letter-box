@@ -1,0 +1,106 @@
+generator client {
+  provider     = "prisma-client"
+  output       = "../src/generated/prisma"
+  moduleFormat = "cjs"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id           String        @id @db.Uuid
+  email        String        @unique
+  passwordHash String        @map("password_hash")
+  createdAt    DateTime      @map("created_at") @db.Timestamptz
+  updatedAt    DateTime      @map("updated_at") @db.Timestamptz
+  accounts     Account[]
+  sessions     AuthSession[]
+
+  @@map("users")
+}
+
+model Account {
+  id          String         @id @db.Uuid
+  userId      String?        @map("user_id") @db.Uuid
+  provider    String
+  email       String
+  status      String         @default("disconnected")
+  lastError   String?        @map("last_error")
+  lastSyncAt  DateTime?      @map("last_sync_at") @db.Timestamptz
+  createdAt   DateTime       @map("created_at") @db.Timestamptz
+  updatedAt   DateTime       @map("updated_at") @db.Timestamptz
+  user        User?          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  mailboxState MailboxState[]
+  mailboxes   Mailbox[]
+  messages    Message[]
+
+  @@index([userId, createdAt], map: "idx_accounts_user_created")
+  @@map("accounts")
+}
+
+model MailboxState {
+  accountId  String  @map("account_id") @db.Uuid
+  mailbox    String
+  uidValidity String @map("uid_validity")
+  account    Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@id([accountId, mailbox])
+  @@map("mailbox_state")
+}
+
+model Mailbox {
+  accountId  String   @map("account_id") @db.Uuid
+  path       String
+  name       String
+  delimiter  String
+  specialUse String?  @map("special_use")
+  totalCount Int      @default(0) @map("total_count")
+  unreadCount Int     @default(0) @map("unread_count")
+  listedAt   DateTime @map("listed_at") @db.Timestamptz
+  account    Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@id([accountId, path])
+  @@map("mailboxes")
+}
+
+model Message {
+  accountId   String    @map("account_id") @db.Uuid
+  mailbox     String
+  uid         BigInt
+  subject     String?
+  senderName  String?   @map("sender_name")
+  senderAddress String? @map("sender_address")
+  receivedAt  DateTime  @map("received_at") @db.Timestamptz
+  flags       Json
+  size        BigInt
+  bodyText    String?   @map("body_text")
+  bodyHtml    String?   @map("body_html")
+  bodyLoadedAt DateTime? @map("body_loaded_at") @db.Timestamptz
+  account     Account   @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@id([accountId, mailbox, uid])
+  @@index([accountId, mailbox, receivedAt(sort: Desc), uid(sort: Desc)], map: "idx_messages_received_at")
+  @@map("messages")
+}
+
+model AuthSession {
+  id        String   @id @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  tokenHash String   @unique @map("token_hash")
+  expiresAt DateTime @map("expires_at") @db.Timestamptz
+  createdAt DateTime @map("created_at") @db.Timestamptz
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId], map: "idx_auth_sessions_user")
+  @@index([expiresAt], map: "idx_auth_sessions_expiry")
+  @@map("auth_sessions")
+}
+
+model SchemaMigration {
+  version   Int      @id
+  name      String
+  appliedAt DateTime @default(now()) @map("applied_at") @db.Timestamptz
+
+  @@map("schema_migrations")
+}

@@ -9,6 +9,7 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
   private connection!: Database.Database;
 
   onModuleInit(): void {
+    if (process.env.DATABASE_URL) return;
     const databasePath = resolve(
       getRuntimeOptions().databasePath
         ?? process.env.DATABASE_PATH
@@ -19,6 +20,23 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
     this.connection.pragma('journal_mode = WAL');
     this.migrateLegacyMailTables();
     this.connection.exec(`
+      CREATE TABLE IF NOT EXISTS users (
+        id TEXT PRIMARY KEY,
+        email TEXT NOT NULL UNIQUE,
+        password_hash TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS auth_sessions (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        token_hash TEXT NOT NULL UNIQUE,
+        expires_at TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+      );
+
       CREATE TABLE IF NOT EXISTS accounts (
         id TEXT PRIMARY KEY,
         provider TEXT NOT NULL,
@@ -71,8 +89,17 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
       CREATE INDEX IF NOT EXISTS idx_messages_received_at
       ON messages(account_id, mailbox, received_at DESC);
     `);
+    this.ensureColumn('accounts', 'user_id', 'TEXT');
     this.ensureColumn('mailboxes', 'total_count', 'INTEGER NOT NULL DEFAULT 0');
     this.ensureColumn('mailboxes', 'unread_count', 'INTEGER NOT NULL DEFAULT 0');
+    this.connection.exec(`
+      CREATE INDEX IF NOT EXISTS idx_accounts_user_created
+      ON accounts(user_id, created_at);
+      CREATE INDEX IF NOT EXISTS idx_auth_sessions_user
+      ON auth_sessions(user_id);
+      CREATE INDEX IF NOT EXISTS idx_auth_sessions_expiry
+      ON auth_sessions(expires_at)
+    `);
     this.connection.pragma('foreign_keys = ON');
 
     for (const path of [databasePath, `${databasePath}-shm`, `${databasePath}-wal`]) {
@@ -87,6 +114,9 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
   }
 
   get db(): Database.Database {
+    if (!this.connection) {
+      throw new Error('SQLite adapter is disabled while DATABASE_URL is configured');
+    }
     return this.connection;
   }
 

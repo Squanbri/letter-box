@@ -5,6 +5,7 @@ import type { AddressInfo } from 'node:net';
 import type { NextFunction, Request, Response } from 'express';
 import { AppModule } from './app.module';
 import { configureRuntime, RuntimeOptions } from './runtime';
+import { FileCredentialStore } from './account/file-credential.store';
 
 export interface ApiHandle {
   url: string;
@@ -40,11 +41,31 @@ class RuntimeLogger implements LoggerService {
 export async function startApi(
   options: RuntimeOptions & { port?: number } = {},
 ): Promise<ApiHandle> {
-  configureRuntime(options);
+  configureRuntime({
+    ...options,
+    credentialStore: options.credentialStore ?? new FileCredentialStore(),
+  });
   const app = await NestFactory.create(AppModule, {
     logger: new RuntimeLogger(),
   });
-  app.enableCors({ origin: true });
+  app.setGlobalPrefix('api/v1');
+  const allowedOrigins = process.env.CORS_ORIGINS
+    ?.split(',')
+    .map((origin) => origin.trim())
+    .filter(Boolean);
+  app.enableCors({
+    origin: (
+      origin: string | undefined,
+      callback: (error: Error | null, allow?: boolean) => void,
+    ) => {
+      const nativeClient = !origin || origin === 'null';
+      const configured = !allowedOrigins?.length || allowedOrigins.includes(origin ?? '');
+      callback(null, nativeClient || configured);
+    },
+  });
+  if (process.env.TRUST_PROXY === 'true') {
+    app.getHttpAdapter().getInstance().set('trust proxy', 1);
+  }
   app.use((request: Request, response: Response, next: NextFunction) => {
     const startedAt = Date.now();
     response.on('finish', () => {
@@ -59,9 +80,11 @@ export async function startApi(
     next();
   });
   const port = options.port ?? Number(process.env.API_PORT ?? 3000);
-  await app.listen(port, '127.0.0.1');
+  const host = process.env.API_HOST ?? '127.0.0.1';
+  await app.listen(port, host);
   const address = app.getHttpServer().address() as AddressInfo;
-  const url = `http://127.0.0.1:${address.port}`;
+  const publicHost = host === '0.0.0.0' ? '127.0.0.1' : host;
+  const url = `http://${publicHost}:${address.port}`;
   console.log(`Letter Box API: ${url}`);
 
   return {

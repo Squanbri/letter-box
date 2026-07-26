@@ -3,17 +3,26 @@
   "version": "0.1.0",
   "private": true,
   "workspaces": [
-    "apps/*"
+    "apps/*",
+    "packages/*"
   ],
   "scripts": {
-    "dev": "concurrently -k -n backend-build,desktop -c blue,magenta \"npm run dev -w @letter-box/backend\" \"npm run dev -w @letter-box/desktop\"",
-    "build": "npm run build -w @letter-box/backend && npm run build -w @letter-box/desktop",
-    "test": "npm run test -w @letter-box/backend",
-    "typecheck": "npm run typecheck -w @letter-box/backend && npm run typecheck -w @letter-box/desktop",
+    "dev": "concurrently -k -n api,worker,desktop -c blue,cyan,magenta \"npm run dev:api -w @letter-box/server\" \"npm run dev:worker -w @letter-box/server\" \"npm run dev -w @letter-box/desktop\"",
+    "infra:up": "docker compose up -d postgres redis",
+    "server:up": "docker compose up -d --build server worker",
+    "server:down": "docker compose down",
+    "infra:down": "docker compose down",
+    "db:import:sqlite": "npm run db:import:sqlite -w @letter-box/server --",
+    "db:generate": "npm run prisma:generate -w @letter-box/server",
+    "db:studio": "npm run prisma:studio -w @letter-box/server",
+    "build": "npm run build -w @letter-box/server && npm run build -w @letter-box/desktop",
+    "test": "npm run test -w @letter-box/server",
+    "typecheck": "npm run typecheck -w @letter-box/server && npm run typecheck -w @letter-box/desktop",
     "dist:mac": "npm run build && npm run dist:mac -w @letter-box/desktop"
   },
   "devDependencies": {
     "concurrently": "^9.2.0",
+    "prisma": "7.8.0",
     "typescript": "^5.8.3"
   },
   "engines": {
