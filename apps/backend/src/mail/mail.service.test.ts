@@ -4,10 +4,13 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
 import { AccountService } from '../account/account.service';
+import { AccountRepository } from '../account/account.repository';
 import { DatabaseService } from '../database/database.service';
 import { configureRuntime, type AccountConfig } from '../runtime';
+import { SyncLockService } from '../sync/sync-lock.service';
 import { ImapService, selectMetadataUids } from './imap.service';
 import { MailService } from './mail.service';
+import { MailRepository } from './mail.repository';
 
 const account = (id: string, email: string): AccountConfig => ({
   id,
@@ -32,7 +35,7 @@ async function fixture() {
   });
   const database = new DatabaseService();
   database.onModuleInit();
-  const accounts = new AccountService(database);
+  const accounts = new AccountService(new AccountRepository(database));
   await accounts.onModuleInit();
   return {
     accounts,
@@ -79,10 +82,13 @@ test('deduplicates concurrent synchronization for the same account', async () =>
     await context.accounts.persist(account('first', 'first@example.com'));
     let fetches = 0;
     let release!: () => void;
+    let markStarted!: () => void;
     const waiting = new Promise<void>((resolve) => { release = resolve; });
+    const started = new Promise<void>((resolve) => { markStarted = resolve; });
     const imap = {
       fetchChanges: async () => {
         fetches += 1;
+        markStarted();
         await waiting;
         return {
           uidValidity: '1',
@@ -93,17 +99,52 @@ test('deduplicates concurrent synchronization for the same account', async () =>
         };
       },
     } as unknown as ImapService;
-    const mail = new MailService(context.database, imap, context.accounts);
+    const mail = new MailService(new MailRepository(context.database), imap, context.accounts);
 
     const first = mail.syncMailbox('first');
     const second = mail.syncMailbox('first');
     assert.strictEqual(first, second);
-    assert.equal(context.accounts.get('first').status, 'syncing');
+    await started;
+    assert.equal((await context.accounts.get('first')).status, 'syncing');
     release();
     const emptyResult = { synced: 0, added: 0, updated: 0, removed: 0 };
     assert.deepEqual(await Promise.all([first, second]), [emptyResult, emptyResult]);
     assert.equal(fetches, 1);
-    assert.equal(context.accounts.get('first').status, 'connected');
+    assert.equal((await context.accounts.get('first')).status, 'connected');
+  } finally {
+    context.close();
+  }
+});
+
+test('rejects synchronization held by another server process', async () => {
+  const context = await fixture();
+  try {
+    await context.accounts.persist(account('first', 'first@example.com'));
+    let fetches = 0;
+    const imap = {
+      fetchChanges: async () => {
+        fetches += 1;
+        throw new Error('must not fetch while the distributed lock is held');
+      },
+    } as unknown as ImapService;
+    const locks = {
+      acquire: async () => null,
+      release: async () => undefined,
+    } as unknown as SyncLockService;
+    const mail = new MailService(
+      new MailRepository(context.database),
+      imap,
+      context.accounts,
+      undefined,
+      locks,
+    );
+
+    await assert.rejects(
+      mail.syncMailbox('first', 'INBOX'),
+      /уже синхронизируется другим процессом/,
+    );
+    assert.equal(fetches, 0);
+    assert.equal((await context.accounts.get('first')).status, 'connected');
   } finally {
     context.close();
   }
@@ -143,7 +184,7 @@ test('applies incremental additions, flag updates, and removals', async () => {
         return snapshots.shift()!;
       },
     } as unknown as ImapService;
-    const mail = new MailService(context.database, imap, context.accounts);
+    const mail = new MailService(new MailRepository(context.database), imap, context.accounts);
 
     assert.deepEqual(
       await mail.syncMailbox('first'),
@@ -169,12 +210,12 @@ test('resets an interrupted synchronization status after restart', async () => {
   const context = await fixture();
   try {
     await context.accounts.persist(account('first', 'first@example.com'));
-    context.accounts.setStatus('first', 'syncing');
+    await context.accounts.setStatus('first', 'syncing');
 
-    const restartedAccounts = new AccountService(context.database);
+    const restartedAccounts = new AccountService(new AccountRepository(context.database));
     await restartedAccounts.onModuleInit();
 
-    assert.equal(restartedAccounts.get('first').status, 'disconnected');
+    assert.equal((await restartedAccounts.get('first')).status, 'disconnected');
   } finally {
     context.close();
   }
@@ -220,10 +261,10 @@ test('changes seen state only for the targeted account and mailbox', async () =>
         updates.push({ accountId, mailbox, uid, seen });
       },
     } as unknown as ImapService;
-    const mail = new MailService(context.database, imap, context.accounts);
+    const mail = new MailService(new MailRepository(context.database), imap, context.accounts);
 
-    assert.equal(context.accounts.get('first').unreadCount, 1);
-    assert.equal(context.accounts.get('second').unreadCount, 1);
+    assert.equal((await context.accounts.get('first')).unreadCount, 1);
+    assert.equal((await context.accounts.get('second')).unreadCount, 1);
     const updated = await mail.setSeen('first', 'INBOX', 42, true);
 
     assert.deepEqual(updates, [{
@@ -233,8 +274,8 @@ test('changes seen state only for the targeted account and mailbox', async () =>
       seen: true,
     }]);
     assert.deepEqual(updated.flags, ['\\Seen']);
-    assert.equal(context.accounts.get('first').unreadCount, 0);
-    assert.equal(context.accounts.get('second').unreadCount, 1);
+    assert.equal((await context.accounts.get('first')).unreadCount, 0);
+    assert.equal((await context.accounts.get('second')).unreadCount, 1);
     assert.deepEqual(
       context.database.db.prepare(
         'SELECT account_id, flags FROM messages ORDER BY account_id',
@@ -272,7 +313,7 @@ test('caches the mailbox catalog and removes folders missing from IMAP', async (
     const imap = {
       fetchMailboxes: async () => snapshots.shift()!,
     } as unknown as ImapService;
-    const mail = new MailService(context.database, imap, context.accounts);
+    const mail = new MailService(new MailRepository(context.database), imap, context.accounts);
 
     assert.equal((await mail.syncMailboxes('first')).length, 2);
     assert.deepEqual(await mail.syncMailboxes('first'), [{
@@ -305,7 +346,7 @@ test('stores equal UIDs independently in different mailboxes', async () => {
         };
       },
     } as unknown as ImapService;
-    const mail = new MailService(context.database, imap, context.accounts);
+    const mail = new MailService(new MailRepository(context.database), imap, context.accounts);
 
     await mail.syncMailbox('first', 'INBOX');
     await mail.syncMailbox('first', 'Archive');
@@ -339,7 +380,7 @@ test('loads older message metadata in pages without replacing newer mail', async
         return [metadata(98, []), metadata(99, [])];
       },
     } as unknown as ImapService;
-    const mail = new MailService(context.database, imap, context.accounts);
+    const mail = new MailService(new MailRepository(context.database), imap, context.accounts);
     context.database.db.prepare(`
       INSERT INTO messages (
         account_id, mailbox, uid, received_at, flags, size
@@ -351,7 +392,8 @@ test('loads older message metadata in pages without replacing newer mail', async
       { loaded: 2 },
     );
     assert.deepEqual(
-      mail.listMessages('first', 'Archive', 2, 1).map((message) => message.uid),
+      (await mail.listMessages('first', 'Archive', 2, 1))
+        .map((message) => message.uid),
       [99, 98],
     );
   } finally {
@@ -365,9 +407,12 @@ test('synchronizes different mailboxes independently for one account', async () 
     await context.accounts.persist(account('first', 'first@example.com'));
     const started: string[] = [];
     const releases = new Map<string, () => void>();
+    let markBothStarted!: () => void;
+    const bothStarted = new Promise<void>((resolve) => { markBothStarted = resolve; });
     const imap = {
       fetchChanges: async (_accountId: string, mailbox: string) => {
         started.push(mailbox);
+        if (started.length === 2) markBothStarted();
         await new Promise<void>((resolve) => releases.set(mailbox, resolve));
         return {
           uidValidity: '1',
@@ -378,10 +423,11 @@ test('synchronizes different mailboxes independently for one account', async () 
         };
       },
     } as unknown as ImapService;
-    const mail = new MailService(context.database, imap, context.accounts);
+    const mail = new MailService(new MailRepository(context.database), imap, context.accounts);
 
     const inbox = mail.syncMailbox('first', 'INBOX');
     const archive = mail.syncMailbox('first', 'Archive');
+    await bothStarted;
     assert.deepEqual(started, ['INBOX', 'Archive']);
     releases.get('INBOX')!();
     releases.get('Archive')!();
@@ -429,7 +475,7 @@ test('flags, archives, and deletes only the targeted message', async () => {
         commands.push(`delete:${mailbox}:${uid}`);
       },
     } as unknown as ImapService;
-    const mail = new MailService(context.database, imap, context.accounts);
+    const mail = new MailService(new MailRepository(context.database), imap, context.accounts);
 
     assert.deepEqual((await mail.setFlagged('first', 'INBOX', 1, true)).flags, ['\\Flagged']);
     await mail.archiveMessage('first', 'INBOX', 1);

@@ -1,22 +1,32 @@
 # Letter Box
 
-Desktop-почтовый клиент для macOS с несколькими аккаунтами Mail.ru и Яндекса.
-Приложение синхронизирует `INBOX` и хранит письма локально в SQLite.
+Клиент-серверный почтовый клиент с desktop-приложением для macOS и отдельным
+сервером синхронизации Mail.ru и Яндекса.
 
 ## Архитектура
 
 ```text
-Electron + React ──REST──> NestJS ──> SQLite
-                              │
-                              └────> IMAP (imapflow)
+Electron + React ──REST / Socket.IO──> NestJS server
+                                          ├──> PostgreSQL
+                                          ├──> Redis sync locks
+                                          └──> IMAP (imapflow)
 ```
 
-Renderer Electron не имеет доступа к Node.js и IMAP. Все операции выполняются
-через REST API backend.
+Electron не импортирует, не запускает и не упаковывает NestJS. Сервер является
+единственным владельцем IMAP-соединений, credentials и почтовых данных. Общие
+DTO находятся в `@letter-box/contracts`. Redis координирует блокировки
+синхронизации между экземплярами сервера. PostgreSQL — обязательный и
+единственный источник серверных данных. SQLite используется только
+одноразовым инструментом импорта старой базы и не входит в production runtime.
+
+REST API и Socket.IO защищены JWT. Каждый почтовый аккаунт принадлежит
+пользователю Letter Box, а account-oriented endpoints проверяют владельца до
+доступа к IMAP credentials или письмам. Короткая access-сессия автоматически
+обновляется ротируемым refresh token; logout отзывает текущую refresh-сессию.
 
 При первой синхронизации загружаются метаданные последних 50 писем. Следующие
 запуски получают только новые UID, обновляют флаги существующих писем и удаляют
-локальные записи, которых больше нет на сервере. В SQLite сохраняются UID,
+локальные записи, которых больше нет на сервере. В PostgreSQL сохраняются UID,
 тема, отправитель, дата, флаги и размер. Тело письма запрашивается с IMAP и
 сохраняется только при первом открытии письма.
 
@@ -34,7 +44,19 @@ Renderer Electron не имеет доступа к Node.js и IMAP. Все оп
 npm install
 ```
 
-Запустите Electron со встроенным backend:
+Создайте локальную конфигурацию:
+
+```bash
+cp .env.example .env
+```
+
+Перед внешним запуском задайте разные стойкие значения
+`LETTER_BOX_ENCRYPTION_KEY` и `JWT_SECRET`. Первый пользователь может
+зарегистрироваться даже при `ALLOW_REGISTRATION=false` и автоматически получает
+существующие аккаунты без владельца. Последующая регистрация разрешается только
+при `ALLOW_REGISTRATION=true`.
+
+Запустите отдельный сервер и desktop-клиент одной dev-командой:
 
 ```bash
 npm run dev
@@ -60,8 +82,14 @@ npm run dev
 удалять. Обычное удаление перемещает письмо в системную корзину, а удаление
 из самой корзины выполняется окончательно.
 
-Конфигурация через `.env` по-прежнему поддерживается для отладки backend без
-Electron. Файл `.env` исключён из Git.
+Сервер также можно запустить независимо:
+
+```bash
+npm run dev -w @letter-box/server
+```
+
+Desktop получает адрес через `LETTER_BOX_API_URL`. Серверный bind и CORS
+настраиваются через `API_HOST` и `CORS_ORIGINS`.
 
 ## macOS-установщик
 
@@ -75,14 +103,31 @@ npm run dist:mac
 установки и тестирования. Для распространения другим пользователям потребуются
 Apple Developer ID, code signing и notarization.
 
-Backend входит в Electron-приложение и автоматически запускается на свободном
-локальном порту. База и зашифрованные настройки хранятся в:
+Backend больше не входит в Electron-приложение. Серверные credentials
+по умолчанию находятся в `./data/credentials.json`. Пароли приложений
+шифруются AES-256-GCM;
+в production переменная `LETTER_BOX_ENCRYPTION_KEY` обязательна.
 
-```text
-~/Library/Application Support/Letter Box/
+## Перенос SQLite в PostgreSQL
+
+Остановите сервер, оставив PostgreSQL запущенным, и выполните:
+
+```bash
+DATABASE_URL=postgresql://letter_box:letter_box_dev@127.0.0.1:5432/letter_box \
+npm run db:import:sqlite -- ./data/letter-box.db
 ```
 
-Диагностический лог main process, встроенного backend и ошибок renderer:
+Команда переносит пользователей, аккаунты, UIDVALIDITY, папки и письма одной
+транзакцией.
+Повторный запуск безопасен: записи обновляются по первичным ключам без
+дублирования. Исходный SQLite-файл не изменяется и не удаляется.
+
+Зашифрованный `credentials.json` импортировать не нужно: сохраните его рядом с
+сервером и используйте прежние `CREDENTIALS_PATH` и
+`LETTER_BOX_ENCRYPTION_KEY`. После проверки PostgreSQL SQLite-файл стоит
+сохранить как резервную копию.
+
+Диагностический лог desktop main process:
 
 ```text
 ~/Library/Application Support/Letter Box/logs/main.log
@@ -94,9 +139,11 @@ Backend входит в Electron-приложение и автоматичес�
 
 ## REST API
 
+Все REST-маршруты имеют префикс `/api/v1`.
+
 | Метод | Путь | Назначение |
 | --- | --- | --- |
-| `GET` | `/health` | Проверка доступности backend |
+| `GET` | `/health` | Проверка доступности server |
 | `GET` | `/accounts` | Список аккаунтов и их статусы |
 | `POST` | `/accounts` | Проверка и добавление аккаунта |
 | `PUT` | `/accounts/:accountId` | Переподключение аккаунта |
@@ -113,7 +160,8 @@ Backend входит в Electron-приложение и автоматичес�
 | `POST` | `/accounts/:accountId/messages/:uid/archive?mailbox=INBOX` | Архивирование письма |
 | `DELETE` | `/accounts/:accountId/messages/:uid?mailbox=INBOX` | Удаление письма |
 
-API слушает только `127.0.0.1:3000`.
+По умолчанию API слушает `127.0.0.1:3000`. Для контейнера или внешнего клиента
+можно установить `API_HOST=0.0.0.0` и ограничить `CORS_ORIGINS`.
 
 ## Проверки
 
@@ -128,6 +176,11 @@ npm audit --omit=dev
 
 ```text
 apps/
-  backend/   NestJS, SQLite, imapflow
+  backend/   самостоятельный NestJS server, PostgreSQL, Redis, imapflow
   desktop/   Electron, React, Vite
+packages/
+  contracts/ общие DTO и события REST/Socket.IO
 ```
+
+Подробное описание границ и целевой инфраструктуры:
+[`docs/architecture.md`](docs/architecture.md).

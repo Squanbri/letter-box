@@ -1,23 +1,22 @@
-import { Inject, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  ConflictException,
+  Inject,
+  Injectable,
+  NotFoundException,
+  Optional,
+} from '@nestjs/common';
 import { AccountService } from '../account/account.service';
-import { DatabaseService } from '../database/database.service';
 import { ImapService } from './imap.service';
-import { MailboxRecord, MessageMetadata, MessageRecord } from './mail.types';
-
-interface MessageRow {
-  account_id: string;
-  mailbox: string;
-  uid: number;
-  subject: string | null;
-  sender_name: string | null;
-  sender_address: string | null;
-  received_at: string;
-  flags: string;
-  size: number;
-  body_text: string | null;
-  body_html: string | null;
-  body_loaded_at: string | null;
-}
+import { MailboxRecord, MessageRecord } from './mail.types';
+import type { SyncResult } from '@letter-box/contracts';
+import { EventsGateway } from '../events/events.gateway';
+import { SyncLockService } from '../sync/sync-lock.service';
+import type { MessageRow } from './mail.repository';
+import {
+  MAIL_REPOSITORY,
+  MailRepositoryContract,
+} from '../database/repository.contracts';
+export type { SyncResult } from '@letter-box/contracts';
 
 @Injectable()
 export class MailService {
@@ -27,152 +26,117 @@ export class MailService {
   }>();
 
   constructor(
-    @Inject(DatabaseService) private readonly database: DatabaseService,
+    @Inject(MAIL_REPOSITORY) private readonly repository: MailRepositoryContract,
     @Inject(ImapService) private readonly imap: ImapService,
     @Inject(AccountService) private readonly accounts: AccountService,
+    @Optional() @Inject(EventsGateway) private readonly events?: EventsGateway,
+    @Optional() @Inject(SyncLockService) private readonly syncLocks?: SyncLockService,
   ) {}
 
   async connect(accountId: string): Promise<{ connected: true }> {
     try {
       await this.imap.testConnection(accountId);
-      this.accounts.setStatus(accountId, 'connected');
+      await this.accounts.setStatus(accountId, 'connected');
       return { connected: true };
     } catch (error) {
-      this.accounts.setStatus(accountId, 'error', this.message(error));
+      await this.accounts.setStatus(accountId, 'error', this.message(error));
       throw error;
     }
   }
 
   syncMailbox(accountId: string, mailbox = 'INBOX'): Promise<SyncResult> {
-    this.accounts.get(accountId);
     const syncKey = `${accountId}\0${mailbox}`;
     const running = this.syncs.get(syncKey);
     if (running) return running.promise;
-    this.accounts.setStatus(accountId, 'syncing');
-    const sync = this.performSync(accountId, mailbox).finally(() => this.syncs.delete(syncKey));
+    const sync = (this.syncLocks
+      ? this.performLockedSync(accountId, mailbox)
+      : this.performLocalSync(accountId, mailbox))
+      .finally(() => this.syncs.delete(syncKey));
     this.syncs.set(syncKey, { mailbox, promise: sync });
     return sync;
   }
 
+  private async performLocalSync(accountId: string, mailbox: string): Promise<SyncResult> {
+    await this.accounts.get(accountId);
+    await this.accounts.setStatus(accountId, 'syncing');
+    this.events?.publish({ type: 'sync.started', accountId, mailbox });
+    return await this.performSync(accountId, mailbox);
+  }
+
+  private async performLockedSync(accountId: string, mailbox: string): Promise<SyncResult> {
+    await this.accounts.get(accountId);
+    const lease = await this.syncLocks!.acquire(accountId, mailbox);
+    if (!lease) {
+      throw new ConflictException('Эта папка уже синхронизируется другим процессом');
+    }
+    await this.accounts.setStatus(accountId, 'syncing');
+    this.events?.publish({ type: 'sync.started', accountId, mailbox });
+    try {
+      return await this.performSync(accountId, mailbox);
+    } finally {
+      await this.syncLocks!.release(lease);
+    }
+  }
+
   private async performSync(accountId: string, mailbox: string): Promise<SyncResult> {
     try {
-      const db = this.database.db;
-      const currentState = db.prepare(
-        'SELECT uid_validity FROM mailbox_state WHERE account_id = ? AND mailbox = ?',
-      ).get(accountId, mailbox) as { uid_validity: string } | undefined;
-      const knownUids = db.prepare(
-        'SELECT uid FROM messages WHERE account_id = ? AND mailbox = ? ORDER BY uid',
-      ).all(accountId, mailbox) as Array<{ uid: number }>;
+      const uidValidity = await this.repository.mailboxState(accountId, mailbox);
+      const knownUids = await this.repository.knownUids(accountId, mailbox);
       const result = await this.imap.fetchChanges(
         accountId,
         mailbox,
-        knownUids.map((row) => row.uid),
-        currentState?.uid_validity,
+        knownUids,
+        uidValidity,
       );
 
-      const removed = db.transaction((messages: MessageMetadata[]) => {
-        let removedCount = 0;
-        if (result.reset) {
-          removedCount += db.prepare(
-            'DELETE FROM messages WHERE account_id = ? AND mailbox = ?',
-          ).run(accountId, mailbox).changes;
-        }
-        db.prepare(`
-          INSERT INTO mailbox_state (account_id, mailbox, uid_validity) VALUES (?, ?, ?)
-          ON CONFLICT(account_id, mailbox) DO UPDATE SET uid_validity = excluded.uid_validity
-        `).run(accountId, mailbox, result.uidValidity);
-        const upsert = db.prepare(`
-          INSERT INTO messages (
-            account_id, mailbox, uid, subject, sender_name, sender_address,
-            received_at, flags, size
-          ) VALUES (
-            @accountId, @mailbox, @uid, @subject, @senderName, @senderAddress,
-            @date, @flags, @size
-          )
-          ON CONFLICT(account_id, mailbox, uid) DO UPDATE SET
-            subject = excluded.subject, sender_name = excluded.sender_name,
-            sender_address = excluded.sender_address, received_at = excluded.received_at,
-            flags = excluded.flags, size = excluded.size
-        `);
-        for (const message of messages) {
-          upsert.run({
-            ...message, accountId, mailbox, flags: JSON.stringify(message.flags),
-          });
-        }
-        const updateFlags = db.prepare(`
-          UPDATE messages SET flags = ?
-          WHERE account_id = ? AND mailbox = ? AND uid = ?
-        `);
-        for (const update of result.flagUpdates) {
-          updateFlags.run(JSON.stringify(update.flags), accountId, mailbox, update.uid);
-        }
-        const serverUids = new Set(result.serverUids);
-        const localUids = db.prepare(
-          'SELECT uid FROM messages WHERE account_id = ? AND mailbox = ?',
-        ).all(accountId, mailbox) as Array<{ uid: number }>;
-        const remove = db.prepare(
-          'DELETE FROM messages WHERE account_id = ? AND mailbox = ? AND uid = ?',
-        );
-        for (const row of localUids) {
-          if (!serverUids.has(row.uid)) {
-            removedCount += remove.run(accountId, mailbox, row.uid).changes;
-          }
-        }
-        return removedCount;
-      })(result.messages);
-      this.accounts.markSynced(accountId);
-      return {
+      const removed = await this.repository.applyChanges(accountId, mailbox, result);
+      await this.accounts.markSynced(accountId);
+      const syncResult = {
         synced: result.messages.length + result.flagUpdates.length,
         added: result.messages.length,
         updated: result.flagUpdates.length,
         removed,
       };
+      this.events?.publish({
+        type: 'sync.completed',
+        accountId,
+        mailbox,
+        result: syncResult,
+      });
+      return syncResult;
     } catch (error) {
-      this.accounts.setStatus(accountId, 'error', this.message(error));
+      await this.accounts.setStatus(accountId, 'error', this.message(error));
+      this.events?.publish({
+        type: 'sync.failed',
+        accountId,
+        mailbox,
+        error: this.message(error),
+      });
       throw error;
     }
   }
 
-  listMessages(
+  async listMessages(
     accountId: string,
     mailbox = 'INBOX',
     limit = 50,
     offset = 0,
-  ): MessageRecord[] {
-    this.accounts.get(accountId);
-    const rows = this.database.db.prepare(
-      `SELECT * FROM messages
-       WHERE account_id = ? AND mailbox = ?
-       ORDER BY received_at DESC, uid DESC LIMIT ? OFFSET ?`,
-    ).all(accountId, mailbox, Math.min(Math.max(limit, 1), 100), Math.max(offset, 0)) as MessageRow[];
+  ): Promise<MessageRecord[]> {
+    await this.accounts.get(accountId);
+    const rows = await this.repository.listMessages(
+      accountId,
+      mailbox,
+      Math.min(Math.max(limit, 1), 100),
+      Math.max(offset, 0),
+    );
     return rows.map((row) => this.mapRow(row, false));
   }
 
-  listMailboxes(accountId: string): MailboxRecord[] {
-    this.accounts.get(accountId);
-    const rows = this.database.db.prepare(`
-      SELECT path, name, delimiter, special_use, total_count, unread_count
-      FROM mailboxes WHERE account_id = ?
-      ORDER BY CASE special_use
-        WHEN '\\Inbox' THEN 0 WHEN '\\Sent' THEN 1 WHEN '\\Drafts' THEN 2
-        WHEN '\\Junk' THEN 3 WHEN '\\Trash' THEN 4 ELSE 5 END, name
-    `).all(accountId) as Array<{
-      path: string;
-      name: string;
-      delimiter: string;
-      special_use: string | null;
-      total_count: number;
-      unread_count: number;
-    }>;
+  async listMailboxes(accountId: string): Promise<MailboxRecord[]> {
+    await this.accounts.get(accountId);
+    const rows = await this.repository.listMailboxes(accountId);
     return rows.length > 0
-      ? rows.map((row) => ({
-        path: row.path,
-        name: row.name,
-        delimiter: row.delimiter,
-        specialUse: row.special_use,
-        totalCount: row.total_count,
-        unreadCount: row.unread_count,
-      }))
+      ? rows
       : [{
         path: 'INBOX', name: 'Входящие', delimiter: '/', specialUse: '\\Inbox',
         totalCount: 0, unreadCount: 0,
@@ -180,45 +144,10 @@ export class MailService {
   }
 
   async syncMailboxes(accountId: string): Promise<MailboxRecord[]> {
-    this.accounts.get(accountId);
+    await this.accounts.get(accountId);
     const mailboxes = await this.imap.fetchMailboxes(accountId);
-    const db = this.database.db;
-    db.transaction(() => {
-      const save = db.prepare(`
-        INSERT INTO mailboxes (
-          account_id, path, name, delimiter, special_use,
-          total_count, unread_count, listed_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        ON CONFLICT(account_id, path) DO UPDATE SET
-          name = excluded.name, delimiter = excluded.delimiter,
-          special_use = excluded.special_use, total_count = excluded.total_count,
-          unread_count = excluded.unread_count, listed_at = excluded.listed_at
-      `);
-      const now = new Date().toISOString();
-      for (const mailbox of mailboxes) {
-        save.run(
-          accountId,
-          mailbox.path,
-          mailbox.name,
-          mailbox.delimiter,
-          mailbox.specialUse,
-          mailbox.totalCount,
-          mailbox.unreadCount,
-          now,
-        );
-      }
-      const paths = new Set(mailboxes.map((mailbox) => mailbox.path));
-      const stored = db.prepare(
-        'SELECT path FROM mailboxes WHERE account_id = ?',
-      ).all(accountId) as Array<{ path: string }>;
-      const remove = db.prepare(
-        'DELETE FROM mailboxes WHERE account_id = ? AND path = ?',
-      );
-      for (const row of stored) {
-        if (!paths.has(row.path)) remove.run(accountId, row.path);
-      }
-    })();
-    return this.listMailboxes(accountId);
+    await this.repository.replaceMailboxes(accountId, mailboxes);
+    return await this.listMailboxes(accountId);
   }
 
   async loadOlder(
@@ -226,49 +155,30 @@ export class MailService {
     mailbox: string,
     beforeUid?: number,
   ): Promise<{ loaded: number }> {
-    this.accounts.get(accountId);
+    await this.accounts.get(accountId);
     const messages = await this.imap.fetchOlderMetadata(
       accountId,
       mailbox,
       beforeUid,
       50,
     );
-    const save = this.database.db.prepare(`
-      INSERT INTO messages (
-        account_id, mailbox, uid, subject, sender_name, sender_address,
-        received_at, flags, size
-      ) VALUES (
-        @accountId, @mailbox, @uid, @subject, @senderName, @senderAddress,
-        @date, @flags, @size
-      )
-      ON CONFLICT(account_id, mailbox, uid) DO UPDATE SET
-        subject = excluded.subject, sender_name = excluded.sender_name,
-        sender_address = excluded.sender_address, received_at = excluded.received_at,
-        flags = excluded.flags, size = excluded.size
-    `);
-    this.database.db.transaction(() => {
-      for (const message of messages) {
-        save.run({
-          ...message,
-          accountId,
-          mailbox,
-          flags: JSON.stringify(message.flags),
-        });
-      }
-    })();
+    await this.repository.saveMessages(accountId, mailbox, messages);
     return { loaded: messages.length };
   }
 
   async getMessage(accountId: string, mailbox: string, uid: number): Promise<MessageRecord> {
-    let row = this.findRow(accountId, mailbox, uid);
+    let row = await this.findRow(accountId, mailbox, uid);
     if (!row) throw new NotFoundException(`Письмо с UID ${uid} отсутствует в локальной базе`);
     if (!row.body_loaded_at) {
       const body = await this.imap.fetchBody(accountId, mailbox, uid);
-      this.database.db.prepare(`
-        UPDATE messages SET body_text = ?, body_html = ?, body_loaded_at = ?
-        WHERE account_id = ? AND mailbox = ? AND uid = ?
-      `).run(body.text, body.html, new Date().toISOString(), accountId, mailbox, uid);
-      row = this.findRow(accountId, mailbox, uid)!;
+      await this.repository.saveBody(
+        accountId,
+        mailbox,
+        uid,
+        body,
+        new Date().toISOString(),
+      );
+      row = (await this.findRow(accountId, mailbox, uid))!;
     }
     return this.mapRow(row, true);
   }
@@ -279,7 +189,7 @@ export class MailService {
     uid: number,
     seen: boolean,
   ): Promise<MessageRecord> {
-    const row = this.findRow(accountId, mailbox, uid);
+    const row = await this.findRow(accountId, mailbox, uid);
     if (!row) {
       throw new NotFoundException(`Письмо с UID ${uid} отсутствует в локальной базе`);
     }
@@ -287,11 +197,11 @@ export class MailService {
     const flags = new Set(JSON.parse(row.flags) as string[]);
     if (seen) flags.add('\\Seen');
     else flags.delete('\\Seen');
-    this.database.db.prepare(`
-      UPDATE messages SET flags = ?
-      WHERE account_id = ? AND mailbox = ? AND uid = ?
-    `).run(JSON.stringify([...flags]), accountId, mailbox, uid);
-    return this.mapRow(this.findRow(accountId, mailbox, uid)!, Boolean(row.body_loaded_at));
+    await this.repository.saveFlags(accountId, mailbox, uid, [...flags]);
+    return this.mapRow(
+      (await this.findRow(accountId, mailbox, uid))!,
+      Boolean(row.body_loaded_at),
+    );
   }
 
   async setFlagged(
@@ -300,16 +210,16 @@ export class MailService {
     uid: number,
     flagged: boolean,
   ): Promise<MessageRecord> {
-    const row = this.requireRow(accountId, mailbox, uid);
+    const row = await this.requireRow(accountId, mailbox, uid);
     await this.imap.setFlagged(accountId, mailbox, uid, flagged);
     const flags = new Set(JSON.parse(row.flags) as string[]);
     if (flagged) flags.add('\\Flagged');
     else flags.delete('\\Flagged');
-    this.database.db.prepare(`
-      UPDATE messages SET flags = ?
-      WHERE account_id = ? AND mailbox = ? AND uid = ?
-    `).run(JSON.stringify([...flags]), accountId, mailbox, uid);
-    return this.mapRow(this.findRow(accountId, mailbox, uid)!, Boolean(row.body_loaded_at));
+    await this.repository.saveFlags(accountId, mailbox, uid, [...flags]);
+    return this.mapRow(
+      (await this.findRow(accountId, mailbox, uid))!,
+      Boolean(row.body_loaded_at),
+    );
   }
 
   async moveMessage(
@@ -318,13 +228,12 @@ export class MailService {
     uid: number,
     destination: string,
   ): Promise<{ moved: true }> {
-    this.requireRow(accountId, mailbox, uid);
-    const target = this.database.db.prepare(
-      'SELECT 1 FROM mailboxes WHERE account_id = ? AND path = ?',
-    ).get(accountId, destination);
-    if (!target) throw new NotFoundException(`Папка ${destination} не найдена`);
+    await this.requireRow(accountId, mailbox, uid);
+    if (!await this.repository.hasMailbox(accountId, destination)) {
+      throw new NotFoundException(`Папка ${destination} не найдена`);
+    }
     await this.imap.moveMessage(accountId, mailbox, uid, destination);
-    this.removeLocalMessage(accountId, mailbox, uid);
+    await this.removeLocalMessage(accountId, mailbox, uid);
     return { moved: true };
   }
 
@@ -333,7 +242,7 @@ export class MailService {
     mailbox: string,
     uid: number,
   ): Promise<{ moved: true }> {
-    const archive = this.specialMailbox(accountId, '\\Archive');
+    const archive = await this.specialMailbox(accountId, '\\Archive');
     if (!archive) throw new NotFoundException('Папка «Архив» не найдена');
     return this.moveMessage(accountId, mailbox, uid, archive);
   }
@@ -343,41 +252,47 @@ export class MailService {
     mailbox: string,
     uid: number,
   ): Promise<{ deleted: true }> {
-    this.requireRow(accountId, mailbox, uid);
-    const trash = this.specialMailbox(accountId, '\\Trash');
+    await this.requireRow(accountId, mailbox, uid);
+    const trash = await this.specialMailbox(accountId, '\\Trash');
     if (trash && trash !== mailbox) {
       await this.imap.moveMessage(accountId, mailbox, uid, trash);
     } else {
       await this.imap.deleteMessage(accountId, mailbox, uid);
     }
-    this.removeLocalMessage(accountId, mailbox, uid);
+    await this.removeLocalMessage(accountId, mailbox, uid);
     return { deleted: true };
   }
 
-  private findRow(accountId: string, mailbox: string, uid: number): MessageRow | undefined {
-    return this.database.db.prepare(
-      'SELECT * FROM messages WHERE account_id = ? AND mailbox = ? AND uid = ?',
-    ).get(accountId, mailbox, uid) as MessageRow | undefined;
+  private findRow(
+    accountId: string,
+    mailbox: string,
+    uid: number,
+  ): Promise<MessageRow | undefined> {
+    return this.repository.findMessage(accountId, mailbox, uid);
   }
 
-  private requireRow(accountId: string, mailbox: string, uid: number): MessageRow {
-    const row = this.findRow(accountId, mailbox, uid);
+  private async requireRow(
+    accountId: string,
+    mailbox: string,
+    uid: number,
+  ): Promise<MessageRow> {
+    const row = await this.findRow(accountId, mailbox, uid);
     if (!row) {
       throw new NotFoundException(`Письмо с UID ${uid} отсутствует в локальной базе`);
     }
     return row;
   }
 
-  private specialMailbox(accountId: string, specialUse: string): string | undefined {
-    return (this.database.db.prepare(
-      'SELECT path FROM mailboxes WHERE account_id = ? AND special_use = ?',
-    ).get(accountId, specialUse) as { path: string } | undefined)?.path;
+  private specialMailbox(accountId: string, specialUse: string): Promise<string | undefined> {
+    return this.repository.specialMailbox(accountId, specialUse);
   }
 
-  private removeLocalMessage(accountId: string, mailbox: string, uid: number): void {
-    this.database.db.prepare(
-      'DELETE FROM messages WHERE account_id = ? AND mailbox = ? AND uid = ?',
-    ).run(accountId, mailbox, uid);
+  private async removeLocalMessage(
+    accountId: string,
+    mailbox: string,
+    uid: number,
+  ): Promise<void> {
+    await this.repository.removeMessage(accountId, mailbox, uid);
   }
 
   private mapRow(row: MessageRow, includeBody: boolean): MessageRecord {
@@ -393,11 +308,4 @@ export class MailService {
   private message(error: unknown): string {
     return error instanceof Error ? error.message : 'Неизвестная ошибка IMAP';
   }
-}
-
-export interface SyncResult {
-  synced: number;
-  added: number;
-  updated: number;
-  removed: number;
 }

@@ -11,10 +11,13 @@ import {
   Post,
   Query,
   Delete,
+  UseGuards,
 } from '@nestjs/common';
 import { MailService, SyncResult } from './mail.service';
 import { MailboxRecord, MessageRecord } from './mail.types';
+import { AccountOwnershipGuard } from '../auth/account-ownership.guard';
 
+@UseGuards(AccountOwnershipGuard)
 @Controller('accounts/:accountId')
 export class MailController {
   constructor(@Inject(MailService) private readonly mail: MailService) {}
@@ -33,7 +36,7 @@ export class MailController {
   }
 
   @Get('mailboxes')
-  mailboxes(@Param('accountId') accountId: string): MailboxRecord[] {
+  mailboxes(@Param('accountId') accountId: string): Promise<MailboxRecord[]> {
     return this.mail.listMailboxes(accountId);
   }
 
@@ -48,7 +51,7 @@ export class MailController {
     @Query('mailbox') mailbox = 'INBOX',
     @Query('limit', new DefaultValuePipe(50), ParseIntPipe) limit = 50,
     @Query('offset', new DefaultValuePipe(0), ParseIntPipe) offset = 0,
-  ): MessageRecord[] {
+  ): Promise<MessageRecord[]> {
     return this.mail.listMessages(accountId, mailbox, limit, offset);
   }
 

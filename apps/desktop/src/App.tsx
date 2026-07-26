@@ -1,8 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   api,
+  clearAuthSession,
+  loadAuthSession,
+  subscribeToServerEvents,
   type AccountInput,
   type AccountStatus,
+  type AuthSession,
   type MailboxInfo,
   type Message,
   type SyncResult,
@@ -19,6 +23,7 @@ interface BackgroundSyncSettings {
 }
 
 export function App() {
+  const [session, setSession] = useState<AuthSession | null | undefined>(undefined);
   const [accounts, setAccounts] = useState<AccountStatus[] | null>(null);
   const [tabs, setTabs] = useState<string[]>(readTabs);
   const [active, setActive] = useState<string>(() => localStorage.getItem(ACTIVE_KEY) ?? 'overview');
@@ -33,7 +38,12 @@ export function App() {
   const accountsRef = useRef<AccountStatus[]>([]);
   const backgroundSyncRef = useRef(backgroundSync);
 
+  useEffect(() => {
+    void loadAuthSession().then(setSession);
+  }, []);
+
   const refresh = useCallback(async () => {
+    if (!session) return;
     try {
       const next = await api.accounts();
       setAccounts(next);
@@ -42,9 +52,23 @@ export function App() {
     } catch (reason) {
       setError(errorMessage(reason));
     }
-  }, []);
+  }, [session]);
 
-  useEffect(() => { void refresh(); }, [refresh]);
+  useEffect(() => {
+    if (session) void refresh();
+  }, [refresh, session]);
+  useEffect(() => {
+    if (!session) return undefined;
+    return subscribeToServerEvents((event) => {
+    void refresh();
+    if (event.type === 'sync.completed') {
+      setSyncVersions((current) => ({
+        ...current,
+        [event.accountId]: (current[event.accountId] ?? 0) + 1,
+      }));
+    }
+    });
+  }, [refresh, session]);
   useEffect(() => { localStorage.setItem(TABS_KEY, JSON.stringify(tabs)); }, [tabs]);
   useEffect(() => { localStorage.setItem(ACTIVE_KEY, active); }, [active]);
   useEffect(() => {
@@ -52,6 +76,14 @@ export function App() {
     backgroundSyncRef.current = backgroundSync;
   }, [backgroundSync]);
   useEffect(() => { accountsRef.current = accounts ?? []; }, [accounts]);
+  useEffect(() => {
+    const unauthorized = () => {
+      setAccounts(null);
+      setSession(null);
+    };
+    window.addEventListener('letter-box:unauthorized', unauthorized);
+    return () => window.removeEventListener('letter-box:unauthorized', unauthorized);
+  }, []);
   useEffect(() => {
     if (active !== 'overview' && accounts && !accounts.some((item) => item.id === active)) {
       setActive('overview');
@@ -131,6 +163,17 @@ export function App() {
     };
   }, [backgroundSyncAll, backgroundSync.intervalMinutes]);
 
+  if (session === undefined) {
+    return <AppStatus error={false} detail="Загрузка защищённой сессии…" retry={refresh} />;
+  }
+
+  if (!session) {
+    return <AuthScreen onAuthenticated={(next) => {
+      setAccounts(null);
+      setSession(next);
+    }} />;
+  }
+
   if (!accounts) {
     return <AppStatus error={Boolean(error)} detail={error ?? 'Загрузка аккаунтов…'} retry={refresh} />;
   }
@@ -152,6 +195,18 @@ export function App() {
             </div>
           );
         })}
+        <button
+          className="tab auth-logout"
+          title={session.user.email}
+          onClick={() => void (async () => {
+            await api.logout().catch(() => undefined);
+            await clearAuthSession();
+            setAccounts(null);
+            setSession(null);
+          })()}
+        >
+          Выйти
+        </button>
       </nav>
       {error && <div className="error-banner">{error}</div>}
       <div className={active === 'overview' ? 'tab-panel active' : 'tab-panel'}>
@@ -679,6 +734,79 @@ function Mailbox({
   );
 }
 
+function AuthScreen({ onAuthenticated }: {
+  onAuthenticated: (session: AuthSession) => void;
+}) {
+  const [mode, setMode] = useState<'login' | 'register'>('login');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const submit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setPending(true);
+    setError(null);
+    try {
+      const session = mode === 'login'
+        ? await api.login({ email, password })
+        : await api.register({ email, password });
+      onAuthenticated(session);
+    } catch (reason) {
+      setError(errorMessage(reason));
+    } finally {
+      setPending(false);
+    }
+  };
+  return (
+    <main className="auth-screen">
+      <form className="account-card auth-card" onSubmit={(event) => void submit(event)}>
+        <div className="status-mark">✉</div>
+        <div>
+          <span className="eyebrow">Letter Box Server</span>
+          <h2>{mode === 'login' ? 'Вход' : 'Создание пользователя'}</h2>
+          <p>Авторизуйтесь на сервере, чтобы получить доступ только к своим почтовым аккаунтам.</p>
+        </div>
+        <label className="field">
+          <span>Email</span>
+          <input
+            type="email"
+            value={email}
+            onChange={(event) => setEmail(event.target.value)}
+            autoComplete="email"
+            required
+          />
+        </label>
+        <label className="field">
+          <span>Пароль</span>
+          <input
+            type="password"
+            value={password}
+            onChange={(event) => setPassword(event.target.value)}
+            autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
+            minLength={10}
+            required
+          />
+        </label>
+        {error && <div className="form-error">{error}</div>}
+        <button disabled={pending}>
+          {pending && <Spinner />}
+          {pending ? 'Подключение…' : mode === 'login' ? 'Войти' : 'Создать пользователя'}
+        </button>
+        <button
+          type="button"
+          className="secondary"
+          onClick={() => {
+            setMode((current) => current === 'login' ? 'register' : 'login');
+            setError(null);
+          }}
+        >
+          {mode === 'login' ? 'Создать пользователя' : 'У меня уже есть пользователь'}
+        </button>
+      </form>
+    </main>
+  );
+}
+
 function AccountDialog({ current, onClose, onSaved }: {
   current: AccountStatus | null;
   onClose: () => void;
@@ -698,7 +826,7 @@ function AccountDialog({ current, onClose, onSaved }: {
   return (
     <div className="dialog-backdrop" onMouseDown={onClose}>
       <form className="account-card" onSubmit={(event) => void submit(event)} onMouseDown={(event) => event.stopPropagation()}>
-        <div><span className="eyebrow">{current ? 'Переподключение' : 'Новый аккаунт'}</span><h2>Подключение к почте</h2><p>Используйте отдельный пароль приложения. Он будет зашифрован системными средствами macOS.</p></div>
+        <div><span className="eyebrow">{current ? 'Переподключение' : 'Новый аккаунт'}</span><h2>Подключение к почте</h2><p>Используйте отдельный пароль приложения. Он будет зашифрован на сервере Letter Box.</p></div>
         <fieldset><legend>Почтовый сервис</legend>{(['mailru', 'yandex'] as const).map((provider) => <label key={provider} className={form.provider === provider ? 'provider selected' : 'provider'}><input type="radio" checked={form.provider === provider} onChange={() => setForm({ ...form, provider })} />{providerName(provider)}</label>)}</fieldset>
         <label className="field"><span>Email</span><input type="email" value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} required /></label>
         <label className="field"><span>Пароль приложения</span><input type="password" value={form.password} onChange={(event) => setForm({ ...form, password: event.target.value })} required /></label>

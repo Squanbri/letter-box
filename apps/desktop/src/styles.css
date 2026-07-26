@@ -40,6 +40,20 @@ button {
   -webkit-app-region: drag;
 }
 
+.auth-logout { margin-left: auto; }
+
+.auth-screen {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 32px;
+  background: #f3f4f0;
+}
+
+.auth-card {
+  width: min(440px, 100%);
+}
+
 .tab {
   height: 35px;
   display: flex;
