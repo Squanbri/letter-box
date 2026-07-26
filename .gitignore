@@ -8,3 +8,4 @@ dist-electron/
 *.db-wal
 .DS_Store
 npm-debug.log*
+apps/backend/src/generated/prisma/

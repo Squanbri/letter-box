@@ -13,6 +13,8 @@
     "server:down": "docker compose down",
     "infra:down": "docker compose down",
     "db:import:sqlite": "npm run db:import:sqlite -w @letter-box/server --",
+    "db:generate": "npm run prisma:generate -w @letter-box/server",
+    "db:studio": "npm run prisma:studio -w @letter-box/server",
     "build": "npm run build -w @letter-box/server && npm run build -w @letter-box/desktop",
     "test": "npm run test -w @letter-box/server",
     "typecheck": "npm run typecheck -w @letter-box/server && npm run typecheck -w @letter-box/desktop",
@@ -20,6 +22,7 @@
   },
   "devDependencies": {
     "concurrently": "^9.2.0",
+    "prisma": "7.8.0",
     "typescript": "^5.8.3"
   },
   "engines": {

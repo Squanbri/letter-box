@@ -1,58 +1,57 @@
-import { Inject, Injectable } from '@nestjs/common';
-import { PostgresDatabaseService } from '../database/postgres-database.service';
-import type { AccountConfig } from '../runtime';
+import { Injectable } from '@nestjs/common';
 import type { AccountStatus } from '@letter-box/contracts';
+import type { AccountConfig } from '../runtime';
 import type { AccountRow } from './account.repository';
-import type { QueryResultRow } from 'pg';
-
-interface PostgresAccountRow extends AccountRow, QueryResultRow {}
+import { PrismaDatabaseService } from '../database/prisma-database.service';
 
 @Injectable()
 export class PostgresAccountRepository {
-  constructor(
-    @Inject(PostgresDatabaseService)
-    private readonly database: PostgresDatabaseService,
-  ) {}
+  constructor(private readonly database: PrismaDatabaseService) {}
 
   async resetConnectionStatuses(now: string): Promise<void> {
-    await this.database.query(
-      "UPDATE accounts SET status = 'disconnected', updated_at = $1",
-      [now],
-    );
+    await this.database.client.account.updateMany({
+      data: { status: 'disconnected', updatedAt: new Date(now) },
+    });
   }
 
   async upsertStored(account: AccountConfig, now: string): Promise<void> {
-    await this.database.query(`
-      INSERT INTO accounts (id, provider, email, status, created_at, updated_at)
-      VALUES ($1, $2, $3, 'disconnected', $4, $4)
-      ON CONFLICT(id) DO UPDATE SET
-        provider = excluded.provider,
-        email = excluded.email,
-        updated_at = excluded.updated_at
-    `, [account.id, account.provider, account.email, now]);
+    const timestamp = new Date(now);
+    await this.database.client.account.upsert({
+      where: { id: account.id },
+      create: {
+        id: account.id,
+        provider: account.provider,
+        email: account.email,
+        status: 'disconnected',
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      },
+      update: {
+        provider: account.provider,
+        email: account.email,
+        updatedAt: timestamp,
+      },
+    });
   }
 
   async list(userId: string | null): Promise<AccountRow[]> {
-    const result = await this.database.query<PostgresAccountRow>(
-      `${this.statusSelect()} WHERE user_id IS NOT DISTINCT FROM $1 ORDER BY created_at`,
-      [userId],
-    );
-    return result.rows;
+    const rows = await this.database.client.account.findMany({
+      where: { userId },
+      orderBy: { createdAt: 'asc' },
+      ...this.statusSelection(),
+    });
+    return rows.map((row) => this.mapRow(row));
   }
 
   async find(userId: string | null, accountId: string): Promise<AccountRow | undefined> {
-    if (userId === null) {
-      const result = await this.database.query<PostgresAccountRow>(
-        `${this.statusSelect()} WHERE id = $1`,
-        [accountId],
-      );
-      return result.rows[0];
-    }
-    const result = await this.database.query<PostgresAccountRow>(
-      `${this.statusSelect()} WHERE user_id = $1 AND id = $2`,
-      [userId, accountId],
-    );
-    return result.rows[0];
+    const row = await this.database.client.account.findFirst({
+      where: {
+        id: accountId,
+        ...(userId === null ? {} : { userId }),
+      },
+      ...this.statusSelection(),
+    });
+    return row ? this.mapRow(row) : undefined;
   }
 
   async saveConnected(
@@ -60,19 +59,27 @@ export class PostgresAccountRepository {
     userId: string | null,
     now: string,
   ): Promise<void> {
-    await this.database.query(`
-      INSERT INTO accounts (
-        id, user_id, provider, email, status, last_error, created_at, updated_at
-      )
-      VALUES ($1, $2, $3, $4, 'connected', NULL, $5, $5)
-      ON CONFLICT(id) DO UPDATE SET
-        user_id = excluded.user_id,
-        provider = excluded.provider,
-        email = excluded.email,
-        status = 'connected',
-        last_error = NULL,
-        updated_at = excluded.updated_at
-    `, [account.id, userId, account.provider, account.email, now]);
+    const timestamp = new Date(now);
+    await this.database.client.account.upsert({
+      where: { id: account.id },
+      create: {
+        id: account.id,
+        userId,
+        provider: account.provider,
+        email: account.email,
+        status: 'connected',
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      },
+      update: {
+        userId,
+        provider: account.provider,
+        email: account.email,
+        status: 'connected',
+        lastError: null,
+        updatedAt: timestamp,
+      },
+    });
   }
 
   async setStatus(
@@ -81,47 +88,82 @@ export class PostgresAccountRepository {
     error: string | null,
     now: string,
   ): Promise<void> {
-    await this.database.query(
-      `UPDATE accounts
-       SET status = $1, last_error = $2, updated_at = $3
-       WHERE id = $4`,
-      [status, error, now, accountId],
-    );
-  }
-
-  async markSynced(accountId: string, now: string): Promise<void> {
-    await this.database.query(
-      `UPDATE accounts
-       SET status = 'connected', last_error = NULL,
-           last_sync_at = $1, updated_at = $1
-       WHERE id = $2`,
-      [now, accountId],
-    );
-  }
-
-  async remove(userId: string | null, accountId: string): Promise<void> {
-    await this.database.query(
-      'DELETE FROM accounts WHERE user_id IS NOT DISTINCT FROM $1 AND id = $2',
-      [userId, accountId],
-    );
-  }
-
-  async clearMailData(accountId: string): Promise<void> {
-    await this.database.transaction(async (client) => {
-      await client.query('DELETE FROM messages WHERE account_id = $1', [accountId]);
-      await client.query('DELETE FROM mailbox_state WHERE account_id = $1', [accountId]);
+    await this.database.client.account.updateMany({
+      where: { id: accountId },
+      data: {
+        status,
+        lastError: error,
+        updatedAt: new Date(now),
+      },
     });
   }
 
-  private statusSelect(): string {
-    return `SELECT id, provider, email, status, last_error,
-      last_sync_at::text AS last_sync_at,
-      (
-        SELECT COUNT(*)::int FROM messages
-        WHERE account_id = accounts.id
-          AND mailbox = 'INBOX'
-          AND NOT (messages.flags ? '\\Seen')
-      ) AS unread_count
-    FROM accounts`;
+  async markSynced(accountId: string, now: string): Promise<void> {
+    const timestamp = new Date(now);
+    await this.database.client.account.updateMany({
+      where: { id: accountId },
+      data: {
+        status: 'connected',
+        lastError: null,
+        lastSyncAt: timestamp,
+        updatedAt: timestamp,
+      },
+    });
+  }
+
+  async remove(userId: string | null, accountId: string): Promise<void> {
+    await this.database.client.account.deleteMany({
+      where: { id: accountId, ...(userId === null ? {} : { userId }) },
+    });
+  }
+
+  async clearMailData(accountId: string): Promise<void> {
+    await this.database.client.$transaction([
+      this.database.client.message.deleteMany({ where: { accountId } }),
+      this.database.client.mailboxState.deleteMany({ where: { accountId } }),
+    ]);
+  }
+
+  private statusSelection() {
+    return {
+      select: {
+        id: true,
+        provider: true,
+        email: true,
+        status: true,
+        lastError: true,
+        lastSyncAt: true,
+        _count: {
+          select: {
+            messages: {
+              where: {
+                mailbox: 'INBOX',
+                NOT: { flags: { array_contains: ['\\Seen'] } },
+              },
+            },
+          },
+        },
+      },
+    } as const;
+  }
+
+  private mapRow(row: {
+    id: string;
+    provider: string;
+    email: string;
+    status: string;
+    lastError: string | null;
+    lastSyncAt: Date | null;
+    _count: { messages: number };
+  }): AccountRow {
+    return {
+      id: row.id,
+      provider: row.provider as AccountRow['provider'],
+      email: row.email,
+      status: row.status as AccountRow['status'],
+      last_error: row.lastError,
+      last_sync_at: row.lastSyncAt?.toISOString() ?? null,
+      unread_count: row._count.messages,
+    };
   }
 }

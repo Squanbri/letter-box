@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import test from 'node:test';
 import { PostgresDatabaseService } from '../database/postgres-database.service';
+import { PrismaDatabaseService } from '../database/prisma-database.service';
 import type { AccountConfig } from '../runtime';
 import { PostgresAccountRepository } from './postgres-account.repository';
 
@@ -12,7 +13,9 @@ test('stores and isolates an account in PostgreSQL', {
   process.env.DATABASE_URL = process.env.POSTGRES_TEST_URL;
   const database = new PostgresDatabaseService();
   await database.onModuleInit();
-  const repository = new PostgresAccountRepository(database);
+  const prisma = new PrismaDatabaseService();
+  await prisma.onModuleInit();
+  const repository = new PostgresAccountRepository(prisma);
   const id = randomUUID();
   const userId = randomUUID();
   const now = new Date().toISOString();
@@ -44,6 +47,7 @@ test('stores and isolates an account in PostgreSQL', {
     await database.query('DELETE FROM accounts WHERE id = $1', [id]);
     await database.query('DELETE FROM users WHERE id = $1', [userId]);
     await database.onModuleDestroy();
+    await prisma.onModuleDestroy();
     if (previousUrl === undefined) delete process.env.DATABASE_URL;
     else process.env.DATABASE_URL = previousUrl;
   }

@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import test from 'node:test';
 import { PostgresAccountRepository } from '../account/postgres-account.repository';
 import { PostgresDatabaseService } from '../database/postgres-database.service';
+import { PrismaDatabaseService } from '../database/prisma-database.service';
 import type { AccountConfig } from '../runtime';
 import { PostgresMailRepository } from './postgres-mail.repository';
 
@@ -13,7 +14,9 @@ test('isolates composite message keys and applies changes in PostgreSQL', {
   process.env.DATABASE_URL = process.env.POSTGRES_TEST_URL;
   const database = new PostgresDatabaseService();
   await database.onModuleInit();
-  const accounts = new PostgresAccountRepository(database);
+  const prisma = new PrismaDatabaseService();
+  await prisma.onModuleInit();
+  const accounts = new PostgresAccountRepository(prisma);
   const mail = new PostgresMailRepository(database);
   const first = account(randomUUID());
   const second = account(randomUUID());
@@ -52,6 +55,7 @@ test('isolates composite message keys and applies changes in PostgreSQL', {
     await accounts.remove(null, first.id);
     await accounts.remove(null, second.id);
     await database.onModuleDestroy();
+    await prisma.onModuleDestroy();
     if (previousUrl === undefined) delete process.env.DATABASE_URL;
     else process.env.DATABASE_URL = previousUrl;
   }

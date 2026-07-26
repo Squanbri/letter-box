@@ -40,6 +40,12 @@ PostgreSQL is the required and only server source of truth. Credentials are
 encrypted by the server using AES-256-GCM and a key provided through
 `LETTER_BOX_ENCRYPTION_KEY`.
 
+The PostgreSQL data model is declared in Prisma Schema. Prisma 7 uses the
+official `pg` driver adapter and a single NestJS-managed Prisma Client per
+process. Account persistence is implemented with typed Prisma queries. The
+mail and auth repositories remain compatible with the existing SQL boundary
+while they are migrated incrementally.
+
 Application services and controllers access PostgreSQL through asynchronous
 repository contracts. Account and mail repositories own SQL, transactions,
 and persistence-specific row mapping.

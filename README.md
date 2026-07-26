@@ -21,6 +21,9 @@ IMAP-задачами, поэтому закрытие desktop или HTTP-со�
 PostgreSQL — обязательный и
 единственный источник серверных данных. SQLite используется только
 одноразовым инструментом импорта старой базы и не входит в production runtime.
+Схема PostgreSQL описана в `apps/backend/prisma/schema.prisma`. Prisma Client
+генерирует типизированные запросы; репозиторий аккаунтов уже использует Prisma,
+а сложные почтовые транзакции временно остаются на существующем SQL-адаптере.
 
 REST API и Socket.IO защищены JWT. Каждый почтовый аккаунт принадлежит
 пользователю Letter Box, а account-oriented endpoints проверяют владельца до
@@ -96,6 +99,18 @@ npm run dev:worker -w @letter-box/server
 Для контейнерного запуска API и worker используйте `npm run server:up`.
 Количество параллельных worker-задач задаётся через
 `SYNC_WORKER_CONCURRENCY`; одинаковые `accountId + mailbox` дедуплицируются.
+
+Открыть локальную PostgreSQL в Prisma Studio:
+
+```bash
+npm run db:studio
+```
+
+После изменения `schema.prisma` обновите типизированный клиент:
+
+```bash
+npm run db:generate
+```
 
 Desktop получает адрес через `LETTER_BOX_API_URL`. Серверный bind и CORS
 настраиваются через `API_HOST` и `CORS_ORIGINS`.
