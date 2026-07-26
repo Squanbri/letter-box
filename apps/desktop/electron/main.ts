@@ -10,7 +10,8 @@ import {
   type CredentialStore,
   startApi,
 } from '@letter-box/backend';
-import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
+import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
 import { installFileLogger } from './logger';
 
@@ -19,37 +20,33 @@ app.setPath('userData', join(app.getPath('appData'), 'Letter Box'));
 const logPath = join(app.getPath('userData'), 'logs', 'main.log');
 installFileLogger(logPath);
 
-interface StoredAccount extends Omit<AccountConfig, 'password'> {
+interface StoredAccount extends Omit<AccountConfig, 'id' | 'password'> {
   encryptedPassword: string;
 }
 
 class KeychainCredentialStore implements CredentialStore {
-  private readonly filePath: string;
+  private readonly directory: string;
+  private readonly legacyPath: string;
 
   constructor(dataDirectory: string) {
-    this.filePath = join(dataDirectory, 'account.json');
+    this.directory = join(dataDirectory, 'credentials');
+    this.legacyPath = join(dataDirectory, 'account.json');
   }
 
-  async load(): Promise<AccountConfig | null> {
+  async loadAll(): Promise<AccountConfig[]> {
+    await this.migrateLegacy();
     try {
-      const stored = JSON.parse(await readFile(this.filePath, 'utf8')) as StoredAccount;
-      const password = safeStorage.decryptString(
-        Buffer.from(stored.encryptedPassword, 'base64'),
-      );
-      return {
-        provider: stored.provider,
-        email: stored.email,
-        host: stored.host,
-        port: stored.port,
-        secure: stored.secure,
-        password,
-      };
+      const ids = JSON.parse(
+        await readFile(join(this.directory, 'index.json'), 'utf8'),
+      ) as string[];
+      const accounts = await Promise.all(ids.map((id) => this.loadOne(id)));
+      return accounts.filter((account): account is AccountConfig => account !== null);
     } catch (error) {
       const code = (error as NodeJS.ErrnoException).code;
       if (code !== 'ENOENT') {
         console.error('Не удалось прочитать настройки аккаунта', error);
       }
-      return null;
+      return [];
     }
   }
 
@@ -58,8 +55,8 @@ class KeychainCredentialStore implements CredentialStore {
       throw new Error('macOS Keychain недоступен');
     }
 
-    const directory = app.getPath('userData');
-    const temporaryPath = `${this.filePath}.tmp`;
+    const filePath = join(this.directory, `${account.id}.json`);
+    const temporaryPath = `${filePath}.tmp`;
     const stored: StoredAccount = {
       provider: account.provider,
       email: account.email,
@@ -69,12 +66,79 @@ class KeychainCredentialStore implements CredentialStore {
       encryptedPassword: safeStorage.encryptString(account.password).toString('base64'),
     };
 
-    await mkdir(directory, { recursive: true });
+    await mkdir(this.directory, { recursive: true });
     await writeFile(temporaryPath, JSON.stringify(stored, null, 2), {
       encoding: 'utf8',
       mode: 0o600,
     });
-    await rename(temporaryPath, this.filePath);
+    await rename(temporaryPath, filePath);
+    const ids = await this.readIndex();
+    if (!ids.includes(account.id)) {
+      await this.writeIndex([...ids, account.id]);
+    }
+  }
+
+  async delete(accountId: string): Promise<void> {
+    await rm(join(this.directory, `${accountId}.json`), { force: true });
+    await this.writeIndex((await this.readIndex()).filter((id) => id !== accountId));
+  }
+
+  private async loadOne(id: string): Promise<AccountConfig | null> {
+    try {
+      const stored = JSON.parse(
+        await readFile(join(this.directory, `${id}.json`), 'utf8'),
+      ) as StoredAccount;
+      return {
+        id,
+        provider: stored.provider,
+        email: stored.email,
+        host: stored.host,
+        port: stored.port,
+        secure: stored.secure,
+        password: safeStorage.decryptString(Buffer.from(stored.encryptedPassword, 'base64')),
+      };
+    } catch (error) {
+      console.error('Не удалось прочитать credentials аккаунта', { id, error });
+      return null;
+    }
+  }
+
+  private async readIndex(): Promise<string[]> {
+    try {
+      return JSON.parse(
+        await readFile(join(this.directory, 'index.json'), 'utf8'),
+      ) as string[];
+    } catch {
+      return [];
+    }
+  }
+
+  private async writeIndex(ids: string[]): Promise<void> {
+    await mkdir(this.directory, { recursive: true });
+    const path = join(this.directory, 'index.json');
+    await writeFile(`${path}.tmp`, JSON.stringify(ids, null, 2), { mode: 0o600 });
+    await rename(`${path}.tmp`, path);
+  }
+
+  private async migrateLegacy(): Promise<void> {
+    try {
+      const legacy = JSON.parse(await readFile(this.legacyPath, 'utf8')) as StoredAccount;
+      const id = randomUUID();
+      await this.save({
+        id,
+        provider: legacy.provider,
+        email: legacy.email,
+        host: legacy.host,
+        port: legacy.port,
+        secure: legacy.secure,
+        password: safeStorage.decryptString(Buffer.from(legacy.encryptedPassword, 'base64')),
+      });
+      await rename(this.legacyPath, `${this.legacyPath}.migrated`);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
+        console.error('Не удалось мигрировать прежний аккаунт', error);
+      }
+    }
   }
 }
 

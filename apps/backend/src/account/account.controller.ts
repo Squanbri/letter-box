@@ -1,9 +1,9 @@
-import { Body, Controller, Get, Inject, Post } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Inject, Param, Post, Put } from '@nestjs/common';
 import { ImapService } from '../mail/imap.service';
 import { DatabaseService } from '../database/database.service';
-import { AccountService, SaveAccountInput } from './account.service';
+import { AccountService, AccountStatus, SaveAccountInput } from './account.service';
 
-@Controller('account')
+@Controller('accounts')
 export class AccountController {
   constructor(
     @Inject(AccountService) private readonly accounts: AccountService,
@@ -12,38 +12,45 @@ export class AccountController {
   ) {}
 
   @Get()
-  getStatus(): { configured: boolean; email: string | null; provider: string | null } {
-    return this.accounts.status();
+  list(): AccountStatus[] {
+    return this.accounts.list();
   }
 
   @Post()
-  async save(@Body() input: SaveAccountInput): Promise<{
-    configured: true;
-    email: string;
-    provider: string;
-  }> {
-    const previous = this.accounts.getAccount();
-    const account = this.accounts.prepare(input);
-    this.accounts.use(account);
+  create(@Body() input: SaveAccountInput): Promise<AccountStatus> {
+    return this.saveAndTest(this.accounts.prepare(input));
+  }
 
+  @Put(':accountId')
+  reconnect(
+    @Param('accountId') accountId: string,
+    @Body() input: SaveAccountInput,
+  ): Promise<AccountStatus> {
+    this.accounts.get(accountId);
+    return this.saveAndTest(this.accounts.prepare(input, accountId), true);
+  }
+
+  @Delete(':accountId')
+  async remove(@Param('accountId') accountId: string): Promise<{ deleted: true }> {
+    await this.accounts.remove(accountId);
+    return { deleted: true };
+  }
+
+  private async saveAndTest(
+    account: ReturnType<AccountService['prepare']>,
+    clearData = false,
+  ): Promise<AccountStatus> {
+    let previous: ReturnType<AccountService['getConfig']> | undefined;
+    try { previous = this.accounts.getConfig(account.id); } catch { /* new account */ }
+    this.accounts.use(account);
     try {
-      await this.imap.testConnection();
+      await this.imap.testConnection(account.id);
       await this.accounts.persist(account);
-      if (
-        previous?.email !== account.email
-        || previous?.provider !== account.provider
-      ) {
-        this.database.clearMailData();
-      }
+      if (clearData) this.database.clearAccountData(account.id);
+      return this.accounts.get(account.id);
     } catch (error) {
-      this.accounts.use(previous);
+      if (previous) this.accounts.use(previous);
       throw error;
     }
-
-    return {
-      configured: true,
-      email: account.email,
-      provider: account.provider,
-    };
   }
 }

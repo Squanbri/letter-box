@@ -1,4 +1,6 @@
 export interface MessageRecord {
+  accountId: string;
+  mailbox: string;
   uid: number;
   subject: string | null;
   from: {
@@ -23,4 +25,3 @@ export interface MessageMetadata {
   flags: string[];
   size: number;
 }
-

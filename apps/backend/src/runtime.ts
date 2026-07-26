@@ -1,4 +1,5 @@
 export interface AccountConfig {
+  id: string;
   provider: 'mailru' | 'yandex';
   email: string;
   password: string;
@@ -8,8 +9,9 @@ export interface AccountConfig {
 }
 
 export interface CredentialStore {
-  load(): Promise<AccountConfig | null>;
+  loadAll(): Promise<AccountConfig[]>;
   save(account: AccountConfig): Promise<void>;
+  delete(accountId: string): Promise<void>;
 }
 
 export interface RuntimeOptions {
@@ -26,4 +28,3 @@ export function configureRuntime(options: RuntimeOptions): void {
 export function getRuntimeOptions(): RuntimeOptions {
   return runtimeOptions;
 }
-
