@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { api, type Message } from './api';
+import { api, type AccountStatus, type Message } from './api';
 
 type Status = 'idle' | 'loading' | 'ready' | 'error';
 
@@ -9,10 +9,17 @@ export function App() {
   const [status, setStatus] = useState<Status>('idle');
   const [error, setError] = useState<string | null>(null);
   const [openingUid, setOpeningUid] = useState<number | null>(null);
+  const [account, setAccount] = useState<AccountStatus | null>(null);
+  const [showAccountSetup, setShowAccountSetup] = useState(false);
 
   const loadLocalMessages = useCallback(async () => {
     try {
-      const localMessages = await api.messages();
+      const [accountStatus, localMessages] = await Promise.all([
+        api.account(),
+        api.messages(),
+      ]);
+      setAccount(accountStatus);
+      setShowAccountSetup(!accountStatus.configured);
       setMessages(localMessages);
       setStatus('ready');
       setError(null);
@@ -62,16 +69,41 @@ export function App() {
       <header className="toolbar">
         <div>
           <h1>Входящие</h1>
-          <span>{messages.length} писем</span>
+          <span>{account?.email ?? `${messages.length} писем`}</span>
         </div>
-        <button type="button" onClick={() => void sync()} disabled={status === 'loading'}>
-          {status === 'loading' ? 'Синхронизация…' : 'Обновить'}
-        </button>
+        <div className="toolbar-actions">
+          <button
+            type="button"
+            className="secondary"
+            onClick={() => setShowAccountSetup(true)}
+          >
+            Аккаунт
+          </button>
+          <button
+            type="button"
+            onClick={() => void sync()}
+            disabled={status === 'loading' || !account?.configured}
+          >
+            {status === 'loading' ? 'Синхронизация…' : 'Обновить'}
+          </button>
+        </div>
       </header>
 
       {error && <div className="error-banner">{error}</div>}
 
-      <div className="mail-layout">
+      {showAccountSetup ? (
+        <AccountSetup
+          current={account}
+          onCancel={account?.configured ? () => setShowAccountSetup(false) : undefined}
+          onSaved={async (savedAccount) => {
+            setAccount(savedAccount);
+            setShowAccountSetup(false);
+            setStatus('loading');
+            await api.sync();
+            await loadLocalMessages();
+          }}
+        />
+      ) : <div className="mail-layout">
         <section className="message-list" aria-label="Список писем">
           {messages.length === 0 && status !== 'error' ? (
             <div className="empty-state">
@@ -129,8 +161,114 @@ export function App() {
             </>
           )}
         </article>
-      </div>
+      </div>}
     </main>
+  );
+}
+
+function AccountSetup({
+  current,
+  onCancel,
+  onSaved,
+}: {
+  current: AccountStatus | null;
+  onCancel?: () => void;
+  onSaved: (account: AccountStatus) => Promise<void>;
+}) {
+  const [provider, setProvider] = useState<'mailru' | 'yandex'>(
+    current?.provider ?? 'mailru',
+  );
+  const [email, setEmail] = useState(current?.email ?? '');
+  const [password, setPassword] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
+
+  const submit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setSaving(true);
+    setFormError(null);
+    try {
+      const saved = await api.saveAccount({ provider, email, password });
+      await onSaved(saved);
+    } catch (reason) {
+      setFormError(errorMessage(reason));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <section className="account-screen">
+      <form className="account-card" onSubmit={(event) => void submit(event)}>
+        <div>
+          <span className="eyebrow">Один почтовый аккаунт</span>
+          <h2>Подключение к почте</h2>
+          <p>
+            Используйте пароль приложения. Обычный пароль от почты не подойдёт.
+            Пароль будет зашифрован средствами macOS Keychain.
+          </p>
+        </div>
+
+        <fieldset>
+          <legend>Почтовый сервис</legend>
+          <label className={provider === 'mailru' ? 'provider selected' : 'provider'}>
+            <input
+              type="radio"
+              name="provider"
+              value="mailru"
+              checked={provider === 'mailru'}
+              onChange={() => setProvider('mailru')}
+            />
+            Mail.ru
+          </label>
+          <label className={provider === 'yandex' ? 'provider selected' : 'provider'}>
+            <input
+              type="radio"
+              name="provider"
+              value="yandex"
+              checked={provider === 'yandex'}
+              onChange={() => setProvider('yandex')}
+            />
+            Яндекс
+          </label>
+        </fieldset>
+
+        <label className="field">
+          <span>Email</span>
+          <input
+            type="email"
+            value={email}
+            onChange={(event) => setEmail(event.target.value)}
+            autoComplete="username"
+            required
+          />
+        </label>
+
+        <label className="field">
+          <span>Пароль приложения</span>
+          <input
+            type="password"
+            value={password}
+            onChange={(event) => setPassword(event.target.value)}
+            autoComplete="current-password"
+            required
+          />
+        </label>
+
+        {formError && <div className="form-error">{formError}</div>}
+
+        <div className="form-actions">
+          {onCancel && (
+            <button type="button" className="secondary" onClick={onCancel}>
+              Отмена
+            </button>
+          )}
+          <button type="submit" disabled={saving}>
+            {saving ? 'Проверка подключения…' : 'Подключить'}
+          </button>
+        </div>
+      </form>
+    </section>
   );
 }
 

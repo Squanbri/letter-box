@@ -1,7 +1,83 @@
-import { app, BrowserWindow, shell } from 'electron';
+import {
+  app,
+  BrowserWindow,
+  safeStorage,
+  shell,
+} from 'electron';
+import {
+  type AccountConfig,
+  type ApiHandle,
+  type CredentialStore,
+  startApi,
+} from '@letter-box/backend';
+import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
-const createWindow = (): void => {
+app.setName('Letter Box');
+app.setPath('userData', join(app.getPath('appData'), 'Letter Box'));
+
+interface StoredAccount extends Omit<AccountConfig, 'password'> {
+  encryptedPassword: string;
+}
+
+class KeychainCredentialStore implements CredentialStore {
+  private readonly filePath: string;
+
+  constructor(dataDirectory: string) {
+    this.filePath = join(dataDirectory, 'account.json');
+  }
+
+  async load(): Promise<AccountConfig | null> {
+    try {
+      const stored = JSON.parse(await readFile(this.filePath, 'utf8')) as StoredAccount;
+      const password = safeStorage.decryptString(
+        Buffer.from(stored.encryptedPassword, 'base64'),
+      );
+      return {
+        provider: stored.provider,
+        email: stored.email,
+        host: stored.host,
+        port: stored.port,
+        secure: stored.secure,
+        password,
+      };
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      if (code !== 'ENOENT') {
+        console.error('Не удалось прочитать настройки аккаунта', error);
+      }
+      return null;
+    }
+  }
+
+  async save(account: AccountConfig): Promise<void> {
+    if (!safeStorage.isEncryptionAvailable()) {
+      throw new Error('macOS Keychain недоступен');
+    }
+
+    const directory = app.getPath('userData');
+    const temporaryPath = `${this.filePath}.tmp`;
+    const stored: StoredAccount = {
+      provider: account.provider,
+      email: account.email,
+      host: account.host,
+      port: account.port,
+      secure: account.secure,
+      encryptedPassword: safeStorage.encryptString(account.password).toString('base64'),
+    };
+
+    await mkdir(directory, { recursive: true });
+    await writeFile(temporaryPath, JSON.stringify(stored, null, 2), {
+      encoding: 'utf8',
+      mode: 0o600,
+    });
+    await rename(temporaryPath, this.filePath);
+  }
+}
+
+let apiHandle: ApiHandle | null = null;
+
+const createWindow = (apiUrl: string): void => {
   const window = new BrowserWindow({
     width: 1180,
     height: 760,
@@ -25,21 +101,35 @@ const createWindow = (): void => {
   });
 
   if (app.isPackaged) {
-    void window.loadFile(join(__dirname, '../dist/index.html'));
+    void window.loadFile(join(__dirname, '../dist/index.html'), {
+      query: { api: apiUrl },
+    });
   } else {
-    void window.loadURL('http://127.0.0.1:5173');
+    void window.loadURL(
+      `http://127.0.0.1:5173/?api=${encodeURIComponent(apiUrl)}`,
+    );
+    window.webContents.openDevTools({ mode: 'detach' });
   }
-
-  window.webContents.openDevTools()
 };
 
-void app.whenReady().then(() => {
-  createWindow();
+void app.whenReady().then(async () => {
+  const dataDirectory = app.getPath('userData');
+  apiHandle = await startApi({
+    port: app.isPackaged ? 0 : Number(process.env.API_PORT ?? 3000),
+    databasePath: join(dataDirectory, 'letter-box.db'),
+    credentialStore: new KeychainCredentialStore(dataDirectory),
+  });
+
+  createWindow(apiHandle.url);
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
-      createWindow();
+      createWindow(apiHandle!.url);
     }
   });
+});
+
+app.on('before-quit', () => {
+  void apiHandle?.close();
 });
 
 app.on('window-all-closed', () => {
@@ -47,4 +137,3 @@ app.on('window-all-closed', () => {
     app.quit();
   }
 });
-

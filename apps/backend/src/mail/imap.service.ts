@@ -1,14 +1,18 @@
 import {
   BadGatewayException,
+  Inject,
   Injectable,
   InternalServerErrorException,
 } from '@nestjs/common';
 import { ImapFlow, type FetchMessageObject, type ImapFlowOptions } from 'imapflow';
 import { simpleParser } from 'mailparser';
 import { MessageMetadata } from './mail.types';
+import { AccountService } from '../account/account.service';
 
 @Injectable()
 export class ImapService {
+  constructor(@Inject(AccountService) private readonly accounts: AccountService) {}
+
   async testConnection(): Promise<void> {
     await this.withInbox(async () => undefined);
   }
@@ -79,21 +83,19 @@ export class ImapService {
   }
 
   private options(): ImapFlowOptions {
-    const host = process.env.IMAP_HOST;
-    const user = process.env.IMAP_USER;
-    const pass = process.env.IMAP_PASSWORD;
+    const account = this.accounts.getAccount();
 
-    if (!host || !user || !pass) {
+    if (!account) {
       throw new InternalServerErrorException(
-        'Не заданы IMAP_HOST, IMAP_USER или IMAP_PASSWORD',
+        'Почтовый аккаунт ещё не подключён',
       );
     }
 
     return {
-      host,
-      port: Number(process.env.IMAP_PORT ?? 993),
-      secure: process.env.IMAP_SECURE !== 'false',
-      auth: { user, pass },
+      host: account.host,
+      port: account.port,
+      secure: account.secure,
+      auth: { user: account.email, pass: account.password },
       logger: false,
     };
   }

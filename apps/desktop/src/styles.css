@@ -49,7 +49,8 @@ button {
   font-size: 12px;
 }
 
-.toolbar button {
+.toolbar button,
+.account-card button {
   border: 0;
   border-radius: 8px;
   padding: 8px 14px;
@@ -59,9 +60,21 @@ button {
   -webkit-app-region: no-drag;
 }
 
-.toolbar button:disabled {
+.toolbar button:disabled,
+.account-card button:disabled {
   cursor: wait;
   opacity: 0.65;
+}
+
+.toolbar-actions {
+  display: flex;
+  gap: 8px;
+  -webkit-app-region: no-drag;
+}
+
+button.secondary {
+  background: #e5e8e1;
+  color: #40433d;
 }
 
 .error-banner {
@@ -206,4 +219,109 @@ button {
 
 .empty-state span {
   font-size: 13px;
+}
+
+.account-screen {
+  min-height: 0;
+  overflow: auto;
+  display: grid;
+  place-items: center;
+  padding: 42px 24px;
+  background:
+    radial-gradient(circle at 25% 15%, #e4ebe0 0, transparent 36%),
+    #f3f4f0;
+}
+
+.account-card {
+  width: min(100%, 480px);
+  display: grid;
+  gap: 22px;
+  padding: 32px;
+  border: 1px solid #d8dad4;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: 0 18px 55px rgba(39, 47, 40, 0.1);
+}
+
+.account-card h2 {
+  margin: 5px 0 9px;
+  font-size: 25px;
+}
+
+.account-card p {
+  margin: 0;
+  color: #6f726b;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.eyebrow {
+  color: #31594a;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.account-card fieldset {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.account-card legend,
+.field > span {
+  display: block;
+  grid-column: 1 / -1;
+  margin-bottom: 8px;
+  color: #555851;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.provider {
+  padding: 11px 13px;
+  border: 1px solid #d8dad4;
+  border-radius: 9px;
+  cursor: pointer;
+}
+
+.provider.selected {
+  border-color: #56816e;
+  background: #e9f0e9;
+}
+
+.provider input {
+  margin: 0 8px 0 0;
+}
+
+.field input {
+  width: 100%;
+  padding: 11px 12px;
+  border: 1px solid #d1d4cd;
+  border-radius: 9px;
+  outline: none;
+  font: inherit;
+}
+
+.field input:focus {
+  border-color: #56816e;
+  box-shadow: 0 0 0 3px rgba(86, 129, 110, 0.14);
+}
+
+.form-error {
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: #fff0ed;
+  color: #9a3427;
+  font-size: 13px;
+}
+
+.form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
 }

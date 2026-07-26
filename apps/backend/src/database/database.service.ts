@@ -1,14 +1,19 @@
 import { Injectable, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import Database from 'better-sqlite3';
-import { mkdirSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
+import { getRuntimeOptions } from '../runtime';
 
 @Injectable()
 export class DatabaseService implements OnModuleInit, OnModuleDestroy {
   private connection!: Database.Database;
 
   onModuleInit(): void {
-    const databasePath = resolve(process.env.DATABASE_PATH ?? './data/letter-box.db');
+    const databasePath = resolve(
+      getRuntimeOptions().databasePath
+        ?? process.env.DATABASE_PATH
+        ?? './data/letter-box.db',
+    );
     mkdirSync(dirname(databasePath), { recursive: true });
     this.connection = new Database(databasePath);
     this.connection.pragma('journal_mode = WAL');
@@ -34,6 +39,12 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
       CREATE INDEX IF NOT EXISTS idx_messages_received_at
       ON messages(received_at DESC);
     `);
+
+    for (const path of [databasePath, `${databasePath}-shm`, `${databasePath}-wal`]) {
+      if (existsSync(path)) {
+        chmodSync(path, 0o600);
+      }
+    }
   }
 
   onModuleDestroy(): void {
@@ -43,5 +54,11 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
   get db(): Database.Database {
     return this.connection;
   }
-}
 
+  clearMailData(): void {
+    this.connection.transaction(() => {
+      this.connection.prepare('DELETE FROM messages').run();
+      this.connection.prepare('DELETE FROM mailbox_state').run();
+    })();
+  }
+}

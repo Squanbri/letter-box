@@ -6,9 +6,10 @@
     "apps/*"
   ],
   "scripts": {
-    "dev": "concurrently -k -n backend,desktop -c blue,magenta \"npm run dev -w @letter-box/backend\" \"npm run dev -w @letter-box/desktop\"",
+    "dev": "concurrently -k -n backend-build,desktop -c blue,magenta \"npm run dev -w @letter-box/backend\" \"npm run dev -w @letter-box/desktop\"",
     "build": "npm run build -w @letter-box/backend && npm run build -w @letter-box/desktop",
-    "typecheck": "npm run typecheck -w @letter-box/backend && npm run typecheck -w @letter-box/desktop"
+    "typecheck": "npm run typecheck -w @letter-box/backend && npm run typecheck -w @letter-box/desktop",
+    "dist:mac": "npm run build && npm run dist:mac -w @letter-box/desktop"
   },
   "devDependencies": {
     "concurrently": "^9.2.0",
@@ -18,4 +19,3 @@
     "node": ">=22"
   }
 }
-
