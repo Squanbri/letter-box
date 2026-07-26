@@ -1,4 +1,5 @@
 import {
+  BadGatewayException,
   Injectable,
   OnModuleDestroy,
   OnModuleInit,
@@ -68,7 +69,14 @@ export class SyncQueueService implements OnModuleInit, OnModuleDestroy {
       { accountId, mailbox },
       { jobId: this.jobId(accountId, mailbox) },
     );
-    return job.waitUntilFinished(this.events, 20 * 60 * 1_000);
+    try {
+      return await job.waitUntilFinished(this.events, 20 * 60 * 1_000);
+    } catch (error) {
+      const message = error instanceof Error
+        ? error.message
+        : 'Неизвестная ошибка sync worker';
+      throw new BadGatewayException(message);
+    }
   }
 
   async status(accountId: string): Promise<SyncStatus> {

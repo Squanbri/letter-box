@@ -3,7 +3,9 @@ import { NestFactory } from '@nestjs/core';
 import { Worker } from 'bullmq';
 import { AppModule } from './app.module';
 import { AccountService } from './account/account.service';
+import { FileCredentialStore } from './account/file-credential.store';
 import { MailService } from './mail/mail.service';
+import { configureRuntime } from './runtime';
 import {
   SYNC_QUEUE_NAME,
   SyncJobData,
@@ -15,6 +17,7 @@ async function startWorker(): Promise<void> {
   const redisUrl = process.env.REDIS_URL;
   if (!redisUrl) throw new Error('REDIS_URL обязателен для sync worker');
 
+  configureRuntime({ credentialStore: new FileCredentialStore() });
   const application = await NestFactory.createApplicationContext(AppModule);
   const accounts = application.get(AccountService);
   const mail = application.get(MailService);

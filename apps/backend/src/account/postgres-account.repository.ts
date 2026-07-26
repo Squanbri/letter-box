@@ -41,8 +41,15 @@ export class PostgresAccountRepository {
   }
 
   async find(userId: string | null, accountId: string): Promise<AccountRow | undefined> {
+    if (userId === null) {
+      const result = await this.database.query<PostgresAccountRow>(
+        `${this.statusSelect()} WHERE id = $1`,
+        [accountId],
+      );
+      return result.rows[0];
+    }
     const result = await this.database.query<PostgresAccountRow>(
-      `${this.statusSelect()} WHERE user_id IS NOT DISTINCT FROM $1 AND id = $2`,
+      `${this.statusSelect()} WHERE user_id = $1 AND id = $2`,
       [userId, accountId],
     );
     return result.rows[0];

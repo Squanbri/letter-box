@@ -14,6 +14,7 @@ test('stores and isolates an account in PostgreSQL', {
   await database.onModuleInit();
   const repository = new PostgresAccountRepository(database);
   const id = randomUUID();
+  const userId = randomUUID();
   const now = new Date().toISOString();
   const account: AccountConfig = {
     id,
@@ -26,14 +27,22 @@ test('stores and isolates an account in PostgreSQL', {
   };
 
   try {
-    await repository.saveConnected(account, null, now);
+    await database.query(
+      `INSERT INTO users (id, email, password_hash, created_at, updated_at)
+       VALUES ($1, $2, 'test', $3, $3)`,
+      [userId, `${userId}@example.com`, now],
+    );
+    await repository.saveConnected(account, userId, now);
     assert.equal((await repository.find(null, id))?.email, account.email);
+    assert.equal((await repository.find(userId, id))?.email, account.email);
+    assert.equal(await repository.find(randomUUID(), id), undefined);
     await repository.setStatus(id, 'error', 'test error', now);
     assert.equal((await repository.find(null, id))?.last_error, 'test error');
-    await repository.remove(null, id);
+    await repository.remove(userId, id);
     assert.equal(await repository.find(null, id), undefined);
   } finally {
     await database.query('DELETE FROM accounts WHERE id = $1', [id]);
+    await database.query('DELETE FROM users WHERE id = $1', [userId]);
     await database.onModuleDestroy();
     if (previousUrl === undefined) delete process.env.DATABASE_URL;
     else process.env.DATABASE_URL = previousUrl;

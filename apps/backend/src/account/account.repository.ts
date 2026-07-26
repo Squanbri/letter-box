@@ -39,8 +39,13 @@ export class AccountRepository {
   }
 
   async find(userId: string | null, accountId: string): Promise<AccountRow | undefined> {
+    if (userId === null) {
+      return this.database.db.prepare(
+        `${this.statusSelect()} WHERE id = ?`,
+      ).get(accountId) as AccountRow | undefined;
+    }
     return this.database.db.prepare(
-      `${this.statusSelect()} WHERE user_id IS ? AND id = ?`,
+      `${this.statusSelect()} WHERE user_id = ? AND id = ?`,
     ).get(userId, accountId) as AccountRow | undefined;
   }
 
