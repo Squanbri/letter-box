@@ -6,7 +6,7 @@ type Status = 'idle' | 'loading' | 'ready' | 'error';
 export function App() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [selected, setSelected] = useState<Message | null>(null);
-  const [status, setStatus] = useState<Status>('idle');
+  const [status, setStatus] = useState<Status>('loading');
   const [error, setError] = useState<string | null>(null);
   const [openingUid, setOpeningUid] = useState<number | null>(null);
   const [account, setAccount] = useState<AccountStatus | null>(null);
@@ -64,6 +64,25 @@ export function App() {
     }
   };
 
+  if (!account && status === 'loading') {
+    return <AppStatus title="Загрузка почты…" detail="Читаем локальную базу данных" />;
+  }
+
+  if (!account && status === 'error') {
+    return (
+      <AppStatus
+        title="Не удалось подключиться к локальному сервису"
+        detail={error ?? 'Неизвестная ошибка'}
+        error
+        action={
+          <button type="button" onClick={() => void loadLocalMessages()}>
+            Повторить
+          </button>
+        }
+      />
+    );
+  }
+
   return (
     <main className="app-shell">
       <header className="toolbar">
@@ -108,7 +127,7 @@ export function App() {
           {messages.length === 0 && status !== 'error' ? (
             <div className="empty-state">
               <strong>Писем пока нет</strong>
-              <span>Настройте .env и нажмите «Обновить»</span>
+              <span>Нажмите «Обновить», чтобы синхронизировать INBOX</span>
             </div>
           ) : (
             messages.map((message) => (
@@ -162,6 +181,33 @@ export function App() {
           )}
         </article>
       </div>}
+    </main>
+  );
+}
+
+function AppStatus({
+  title,
+  detail,
+  error = false,
+  action,
+}: {
+  title: string;
+  detail: string;
+  error?: boolean;
+  action?: React.ReactNode;
+}) {
+  return (
+    <main className="full-status">
+      <div className="status-mark">✉</div>
+      <h1>{title}</h1>
+      <p className={error ? 'status-error' : ''}>{detail}</p>
+      {!error && <div className="status-spinner" />}
+      {action}
+      {error && (
+        <small>
+          Подробности: ~/Library/Application Support/Letter Box/logs/main.log
+        </small>
+      )}
     </main>
   );
 }

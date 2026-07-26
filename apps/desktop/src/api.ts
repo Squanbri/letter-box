@@ -33,6 +33,14 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export const api = {
+  reportError: (message: string, stack?: string) => request<{ logged: true }>(
+    '/diagnostics/log',
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ level: 'error', message, stack }),
+    },
+  ),
   account: () => request<AccountStatus>('/account'),
   saveAccount: (account: {
     provider: 'mailru' | 'yandex';

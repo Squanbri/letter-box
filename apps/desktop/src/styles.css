@@ -15,6 +15,10 @@ body {
   min-height: 100vh;
 }
 
+#root {
+  min-height: 100vh;
+}
+
 button {
   font: inherit;
 }
@@ -324,4 +328,75 @@ button.secondary {
   display: flex;
   justify-content: flex-end;
   gap: 8px;
+}
+
+.full-status {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 40px;
+  background: #f3f4f0;
+  text-align: center;
+}
+
+.status-mark {
+  width: 54px;
+  height: 54px;
+  display: grid;
+  place-items: center;
+  margin-bottom: 20px;
+  border-radius: 15px;
+  background: #31594a;
+  color: white;
+  font-size: 27px;
+}
+
+.full-status h1 {
+  margin: 0 0 8px;
+  font-size: 24px;
+}
+
+.full-status p {
+  max-width: 520px;
+  margin: 0;
+  color: #74776f;
+  font-size: 14px;
+}
+
+.full-status .status-error {
+  color: #9a3427;
+}
+
+.full-status button {
+  margin-top: 20px;
+  padding: 9px 15px;
+  border: 0;
+  border-radius: 8px;
+  background: #31594a;
+  color: white;
+}
+
+.full-status small {
+  max-width: 620px;
+  margin-top: 18px;
+  color: #7c7f78;
+  font: 11px/1.5 ui-monospace, monospace;
+}
+
+.status-spinner {
+  width: 22px;
+  height: 22px;
+  margin-top: 24px;
+  border: 2px solid #d5d9d2;
+  border-top-color: #31594a;
+  border-radius: 50%;
+  animation: status-spin 0.8s linear infinite;
+}
+
+@keyframes status-spin {
+  to {
+    transform: rotate(360deg);
+  }
 }

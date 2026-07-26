@@ -66,6 +66,16 @@ Backend входит в Electron-приложение и автоматичес�
 ~/Library/Application Support/Letter Box/
 ```
 
+Диагностический лог main process, встроенного backend и ошибок renderer:
+
+```text
+~/Library/Application Support/Letter Box/logs/main.log
+```
+
+Лог автоматически ротируется после 2 МБ, предыдущая версия сохраняется рядом
+как `main.log.previous`. Пароль приложения и тела HTTP-запросов в лог не
+записываются.
+
 ## REST API
 
 | Метод | Путь | Назначение |
