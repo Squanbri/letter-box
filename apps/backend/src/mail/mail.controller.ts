@@ -1,4 +1,15 @@
-import { Controller, Get, Inject, Param, ParseIntPipe, Post, Query } from '@nestjs/common';
+import {
+  Body,
+  BadRequestException,
+  Controller,
+  Get,
+  Inject,
+  Param,
+  ParseIntPipe,
+  Patch,
+  Post,
+  Query,
+} from '@nestjs/common';
 import { MailService, SyncResult } from './mail.service';
 import { MessageRecord } from './mail.types';
 
@@ -31,5 +42,18 @@ export class MailController {
     @Query('mailbox') mailbox = 'INBOX',
   ): Promise<MessageRecord> {
     return this.mail.getMessage(accountId, mailbox, uid);
+  }
+
+  @Patch('messages/:uid/seen')
+  setSeen(
+    @Param('accountId') accountId: string,
+    @Param('uid', ParseIntPipe) uid: number,
+    @Query('mailbox') mailbox = 'INBOX',
+    @Body() input: { seen: boolean },
+  ): Promise<MessageRecord> {
+    if (typeof input.seen !== 'boolean') {
+      throw new BadRequestException('Поле seen должно быть boolean');
+    }
+    return this.mail.setSeen(accountId, mailbox, uid, input.seen);
   }
 }

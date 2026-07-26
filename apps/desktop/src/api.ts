@@ -8,6 +8,7 @@ export interface AccountStatus {
   status: 'connected' | 'disconnected' | 'syncing' | 'error';
   lastError: string | null;
   lastSyncAt: string | null;
+  unreadCount: number;
 }
 
 export interface AccountInput {
@@ -69,5 +70,10 @@ export const api = {
   message: (id: string, uid: number, mailbox = 'INBOX') =>
     request<Message>(
       `${accountPath(id)}/messages/${uid}?mailbox=${encodeURIComponent(mailbox)}`,
+    ),
+  setSeen: (id: string, uid: number, seen: boolean, mailbox = 'INBOX') =>
+    request<Message>(
+      `${accountPath(id)}/messages/${uid}/seen?mailbox=${encodeURIComponent(mailbox)}`,
+      json('PATCH', { seen }),
     ),
 };

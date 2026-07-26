@@ -22,6 +22,7 @@ export interface AccountStatus {
   status: 'connected' | 'disconnected' | 'syncing' | 'error';
   lastError: string | null;
   lastSyncAt: string | null;
+  unreadCount: number;
 }
 
 interface AccountRow {
@@ -31,6 +32,7 @@ interface AccountRow {
   status: AccountStatus['status'];
   last_error: string | null;
   last_sync_at: string | null;
+  unread_count: number;
 }
 
 @Injectable()
@@ -59,14 +61,30 @@ export class AccountService implements OnModuleInit {
 
   list(): AccountStatus[] {
     const rows = this.database.db.prepare(
-      'SELECT id, provider, email, status, last_error, last_sync_at FROM accounts ORDER BY created_at',
+      `SELECT id, provider, email, status, last_error, last_sync_at,
+        (
+          SELECT COUNT(*) FROM messages
+          WHERE account_id = accounts.id AND mailbox = 'INBOX'
+            AND NOT EXISTS (
+              SELECT 1 FROM json_each(messages.flags) WHERE value = '\\Seen'
+            )
+        ) AS unread_count
+      FROM accounts ORDER BY created_at`,
     ).all() as AccountRow[];
     return rows.map(this.mapStatus);
   }
 
   get(accountId: string): AccountStatus {
     const row = this.database.db.prepare(
-      'SELECT id, provider, email, status, last_error, last_sync_at FROM accounts WHERE id = ?',
+      `SELECT id, provider, email, status, last_error, last_sync_at,
+        (
+          SELECT COUNT(*) FROM messages
+          WHERE account_id = accounts.id AND mailbox = 'INBOX'
+            AND NOT EXISTS (
+              SELECT 1 FROM json_each(messages.flags) WHERE value = '\\Seen'
+            )
+        ) AS unread_count
+      FROM accounts WHERE id = ?`,
     ).get(accountId) as AccountRow | undefined;
     if (!row) throw new NotFoundException('Аккаунт не найден');
     return this.mapStatus(row);
@@ -128,6 +146,7 @@ export class AccountService implements OnModuleInit {
     return {
       id: row.id, provider: row.provider, email: row.email, status: row.status,
       lastError: row.last_error, lastSyncAt: row.last_sync_at,
+      unreadCount: row.unread_count,
     };
   }
 }
