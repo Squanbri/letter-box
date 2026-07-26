@@ -1,0 +1,96 @@
+import { useEffect, useState } from 'react';
+import { Badge, Button, Center, Loader, Text } from '@mantine/core';
+import type { AccountStatus } from '../shared/api/client';
+import { errorMessage, formatCount } from '../shared/lib/format';
+import { AccountDialog } from '../components/account-dialog/AccountDialog';
+import { AuthPage } from '../pages/auth/AuthPage';
+import { MailboxPage } from '../pages/mailbox/MailboxPage';
+import { OverviewPage } from '../pages/overview/OverviewPage';
+import { useAccountsQuery, useDeleteAccountMutation } from '../state/accounts/accounts';
+import { useAuth } from '../state/auth/AuthProvider';
+import { useWorkspace } from '../state/workspace/WorkspaceProvider';
+
+const EMPTY_ACCOUNTS: AccountStatus[] = [];
+
+export function AppShell() {
+  const { session, logout } = useAuth();
+  const accountsQuery = useAccountsQuery(Boolean(session));
+  const accounts = accountsQuery.data ?? EMPTY_ACCOUNTS;
+  const workspace = useWorkspace();
+  const removeAccount = useDeleteAccountMutation();
+  const [editing, setEditing] = useState<AccountStatus | 'new' | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (accountsQuery.data) {
+      workspace.reconcileAccounts(accountsQuery.data.map((account) => account.id));
+    }
+  }, [accountsQuery.data]);
+
+  if (session === undefined) {
+    return <Center h="100vh"><Loader /></Center>;
+  }
+  if (!session) return <AuthPage />;
+  if (accountsQuery.isLoading) {
+    return <Center h="100vh"><Loader /></Center>;
+  }
+  if (accountsQuery.error) {
+    return (
+      <Center h="100vh">
+        <div><Text c="red">{errorMessage(accountsQuery.error)}</Text><Button mt="md" onClick={() => void accountsQuery.refetch()}>Повторить</Button></div>
+      </Center>
+    );
+  }
+
+  return (
+    <main className="app-shell">
+      <nav className="tabbar">
+        <button className={workspace.active === 'overview' ? 'tab active' : 'tab'} onClick={() => workspace.setActive('overview')}>Обзор</button>
+        {workspace.tabs.map((id) => {
+          const account = accounts.find((item) => item.id === id);
+          if (!account) return null;
+          return (
+            <div className={workspace.active === id ? 'tab active' : 'tab'} key={id}>
+              <button onClick={() => workspace.setActive(id)}>{account.email}</button>
+              {account.unreadCount > 0 && <Badge size="xs">{formatCount(account.unreadCount)}</Badge>}
+              <button className="tab-close" title="Закрыть вкладку" onClick={() => workspace.closeAccount(id)}>×</button>
+            </div>
+          );
+        })}
+        <button className="tab auth-logout" title={session.user.email} onClick={() => void logout()}>Выйти</button>
+      </nav>
+      {error && <div className="error-banner">{error}</div>}
+      <div className={workspace.active === 'overview' ? 'tab-panel active' : 'tab-panel'}>
+        <OverviewPage
+          accounts={accounts}
+          onAdd={() => setEditing('new')}
+          onReconnect={setEditing}
+          onDelete={(account) => {
+            if (!window.confirm(`Удалить аккаунт ${account.email} и все его локальные данные?`)) return;
+            removeAccount.mutate(account.id, {
+              onSuccess: () => workspace.closeAccount(account.id),
+              onError: (reason) => setError(errorMessage(reason)),
+            });
+          }}
+        />
+      </div>
+      {workspace.tabs.map((id) => {
+        const account = accounts.find((item) => item.id === id);
+        return account ? (
+          <div className={workspace.active === id ? 'tab-panel active' : 'tab-panel'} key={id}>
+            <MailboxPage account={account} />
+          </div>
+        ) : null;
+      })}
+      <AccountDialog
+        current={editing === 'new' ? null : editing}
+        opened={editing !== null}
+        onClose={() => setEditing(null)}
+        onSaved={(account) => {
+          setEditing(null);
+          workspace.openAccount(account.id);
+        }}
+      />
+    </main>
+  );
+}

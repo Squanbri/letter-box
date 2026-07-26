@@ -19,6 +19,29 @@ Desktop / future mobile clients
 `@letter-box/contracts` is the shared, transport-only package. It must not
 depend on Electron, NestJS, IMAP, or a database implementation.
 
+## Desktop application
+
+The React client is organized by visual screens and state ownership:
+
+```text
+src/
+  app/         providers, theme, shell and global layout
+  pages/       auth, overview and mailbox screens with local components
+  components/  composed UI shared by screens
+  state/       auth, accounts, mail, sync, preferences and workspace state
+  shared/      API client, reusable UI, formatting and email HTML utilities
+```
+
+TanStack Query owns server state and cache invalidation. Socket.IO events
+invalidate the matching account, mailbox, and message queries instead of
+maintaining parallel copies of server data. React Context owns session,
+workspace tabs, and persisted user preferences. Page-local state is limited to
+UI selections such as the active mailbox and message.
+
+Mantine supplies controls, dialogs, loading states, and theme primitives.
+Application geometry and the sandboxed email viewer remain custom because they
+are specific to the three-column desktop layout.
+
 ## Authentication and ownership
 
 Letter Box users authenticate with email and a scrypt-hashed password. The

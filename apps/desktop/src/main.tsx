@@ -1,8 +1,9 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
+import '@mantine/core/styles.css';
 import { App } from './App';
-import { api } from './api';
-import './styles.css';
+import { api } from './shared/api/client';
+import './app/global.css';
 
 window.addEventListener('error', (event) => {
   void api.reportError(
