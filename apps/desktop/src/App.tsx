@@ -341,13 +341,24 @@ function Mailbox({
   );
   const [selected, setSelected] = useState<Message | null>(null);
   const [loading, setLoading] = useState(true);
-  const [folderSyncing, setFolderSyncing] = useState(false);
+  const [mailboxSyncCounts, setMailboxSyncCounts] = useState<Record<string, number>>({});
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(true);
+  const [actionPending, setActionPending] = useState(false);
   const [openingUid, setOpeningUid] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const onSyncRef = useRef(onSync);
   useEffect(() => { onSyncRef.current = onSync; }, [onSync]);
+  const changeMailboxSyncCount = (mailbox: string, delta: 1 | -1) => {
+    setMailboxSyncCounts((current) => {
+      const nextCount = Math.max(0, (current[mailbox] ?? 0) + delta);
+      if (nextCount === 0) {
+        const { [mailbox]: _finished, ...rest } = current;
+        return rest;
+      }
+      return { ...current, [mailbox]: nextCount };
+    });
+  };
   const load = useCallback(async () => {
     try {
       const page = await api.messages(account.id, selectedMailbox);
@@ -362,14 +373,15 @@ function Mailbox({
   useEffect(() => { setLoading(true); void load(); }, [load, syncVersion]);
   useEffect(() => {
     let active = true;
-    setFolderSyncing(true);
+    const mailbox = selectedMailbox;
+    changeMailboxSyncCount(mailbox, 1);
     void onSyncRef.current(selectedMailbox)
       .then(() => active ? load() : undefined)
       .catch((reason) => {
         if (active) setError(errorMessage(reason));
       })
       .finally(() => {
-        if (active) setFolderSyncing(false);
+        changeMailboxSyncCount(mailbox, -1);
       });
     return () => { active = false; };
   }, [account.id, selectedMailbox, load]);
@@ -397,10 +409,11 @@ function Mailbox({
     }
   }, [mailboxes, selectedMailbox]);
   const sync = async () => {
-    setFolderSyncing(true); setError(null);
+    const mailbox = selectedMailbox;
+    changeMailboxSyncCount(mailbox, 1); setError(null);
     try { await onSync(selectedMailbox); await load(); }
     catch (reason) { setError(errorMessage(reason)); }
-    finally { setFolderSyncing(false); }
+    finally { changeMailboxSyncCount(mailbox, -1); }
   };
   const loadMore = async () => {
     if (loadingMore || !hasMore || messages.length === 0) return;
@@ -449,8 +462,9 @@ function Mailbox({
     catch (reason) { setError(errorMessage(reason)); }
     finally { setOpeningUid(null); }
   };
-  const currentFolderSyncing = folderSyncing
-    || (selectedMailbox === 'INBOX' && syncing);
+  const isMailboxSyncing = (mailbox: string) =>
+    (mailboxSyncCounts[mailbox] ?? 0) > 0 || (mailbox === 'INBOX' && syncing);
+  const currentFolderSyncing = isMailboxSyncing(selectedMailbox);
   const changeSeen = async (message: Message, seen: boolean) => {
     const previousFlags = message.flags;
     const nextFlags = withSeen(previousFlags, seen);
@@ -485,6 +499,58 @@ function Mailbox({
       setError(errorMessage(reason));
     }
   };
+  const changeFlagged = async (message: Message, flagged: boolean) => {
+    const previousFlags = message.flags;
+    const nextFlags = withFlag(message.flags, '\\Flagged', flagged);
+    const apply = (item: Message, flags: string[]) =>
+      item.uid === message.uid && item.mailbox === message.mailbox
+        ? { ...item, flags }
+        : item;
+    setMessages((current) => current.map((item) => apply(item, nextFlags)));
+    setSelected((current) => current ? apply(current, nextFlags) : current);
+    try {
+      const updated = await api.setFlagged(
+        account.id,
+        message.uid,
+        flagged,
+        message.mailbox,
+      );
+      setMessages((current) => current.map((item) => apply(item, updated.flags)));
+      setSelected((current) => current ? apply(current, updated.flags) : current);
+    } catch (reason) {
+      setMessages((current) => current.map((item) => apply(item, previousFlags)));
+      setSelected((current) => current ? apply(current, previousFlags) : current);
+      setError(errorMessage(reason));
+    }
+  };
+  const removeSelected = async (
+    message: Message,
+    operation: () => Promise<unknown>,
+    destination?: string,
+  ) => {
+    const previousMessages = messages;
+    const wasUnread = !isSeen(message);
+    setActionPending(true);
+    setMessages((current) => current.filter(
+      (item) => item.uid !== message.uid || item.mailbox !== message.mailbox,
+    ));
+    setSelected(null);
+    adjustMailboxCount(setMailboxes, message.mailbox, -1, wasUnread ? -1 : 0);
+    if (destination) adjustMailboxCount(setMailboxes, destination, 1, wasUnread ? 1 : 0);
+    if (message.mailbox === 'INBOX' && wasUnread) onUnreadChange(-1);
+    try {
+      await operation();
+    } catch (reason) {
+      setMessages(previousMessages);
+      setSelected(message);
+      adjustMailboxCount(setMailboxes, message.mailbox, 1, wasUnread ? 1 : 0);
+      if (destination) adjustMailboxCount(setMailboxes, destination, -1, wasUnread ? -1 : 0);
+      if (message.mailbox === 'INBOX' && wasUnread) onUnreadChange(1);
+      setError(errorMessage(reason));
+    } finally {
+      setActionPending(false);
+    }
+  };
   return (
     <section className="mail-page">
       <header className="page-header">
@@ -506,7 +572,9 @@ function Mailbox({
             >
               <span>{mailboxIcon(mailbox.specialUse)}</span>
               <strong>{mailboxDisplayName(mailbox)}</strong>
-              {mailbox.unreadCount > 0 && <small>{formatCount(mailbox.unreadCount)}</small>}
+              {isMailboxSyncing(mailbox.path)
+                ? <span className="mailbox-spinner"><Spinner /></span>
+                : mailbox.unreadCount > 0 && <small>{formatCount(mailbox.unreadCount)}</small>}
             </button>
           ))}
         </aside>
@@ -527,7 +595,7 @@ function Mailbox({
             messages.map((message) => (
               <button key={`${message.mailbox}:${message.uid}`} className={`message-row ${selected?.uid === message.uid ? 'selected' : ''} ${isSeen(message) ? '' : 'unread'}`} onClick={() => void openMessage(message)}>
                 <div className="message-heading"><strong>{message.from.name || message.from.address || 'Неизвестный отправитель'}</strong><time>{formatDate(message.date)}</time></div>
-                <span className="subject">{message.subject || 'Без темы'}</span><span className="meta">{formatSize(message.size)}</span>
+                <span className="subject">{message.flags.includes('\\Flagged') ? '★ ' : ''}{message.subject || 'Без темы'}</span><span className="meta">{formatSize(message.size)}</span>
               </button>
             ))}
           {loadingMore && <div className="list-loader"><Spinner />Загрузка старых писем…</div>}
@@ -537,9 +605,69 @@ function Mailbox({
             <header className="message-header">
               <div className="message-title">
                 <h2>{selected.subject || 'Без темы'}</h2>
-                <button className="secondary compact" onClick={() => void changeSeen(selected, !isSeen(selected))}>
-                  {isSeen(selected) ? 'Сделать непрочитанным' : 'Сделать прочитанным'}
-                </button>
+                <div className="message-actions">
+                  <button className="secondary compact" onClick={() => void changeFlagged(selected, !selected.flags.includes('\\Flagged'))}>
+                    {selected.flags.includes('\\Flagged') ? '★ Важное' : '☆ Важное'}
+                  </button>
+                  <button className="secondary compact" onClick={() => void changeSeen(selected, !isSeen(selected))}>
+                    {isSeen(selected) ? 'Не прочитано' : 'Прочитано'}
+                  </button>
+                  {mailboxes.some((mailbox) => mailbox.specialUse === '\\Archive' && mailbox.path !== selected.mailbox) && (
+                    <button
+                      className="secondary compact"
+                      disabled={actionPending}
+                      onClick={() => {
+                        const archive = mailboxes.find((mailbox) => mailbox.specialUse === '\\Archive')!;
+                        void removeSelected(
+                          selected,
+                          () => api.archiveMessage(account.id, selected.uid, selected.mailbox),
+                          archive.path,
+                        );
+                      }}
+                    >
+                      Архив
+                    </button>
+                  )}
+                  <select
+                    value=""
+                    disabled={actionPending}
+                    onChange={(event) => {
+                      const destination = event.target.value;
+                      if (destination) void removeSelected(
+                        selected,
+                        () => api.moveMessage(
+                          account.id,
+                          selected.uid,
+                          selected.mailbox,
+                          destination,
+                        ),
+                        destination,
+                      );
+                    }}
+                    aria-label="Переместить письмо"
+                  >
+                    <option value="">Переместить…</option>
+                    {mailboxes.filter((mailbox) => mailbox.path !== selected.mailbox).map((mailbox) => (
+                      <option key={mailbox.path} value={mailbox.path}>{mailboxDisplayName(mailbox)}</option>
+                    ))}
+                  </select>
+                  <button
+                    className="danger compact"
+                    disabled={actionPending}
+                    onClick={() => {
+                      const trash = mailboxes.find((mailbox) => mailbox.specialUse === '\\Trash');
+                      const permanent = trash?.path === selected.mailbox;
+                      if (permanent && !window.confirm('Удалить письмо окончательно?')) return;
+                      void removeSelected(
+                        selected,
+                        () => api.deleteMessage(account.id, selected.uid, selected.mailbox),
+                        trash?.path !== selected.mailbox ? trash?.path : undefined,
+                      );
+                    }}
+                  >
+                    Удалить
+                  </button>
+                </div>
               </div>
               <div className="sender-details"><strong>{selected.from.name || selected.from.address}</strong><span>{selected.from.address}</span><time>{new Date(selected.date).toLocaleString('ru-RU')}</time></div>
             </header>
@@ -676,9 +804,26 @@ function mailboxIcon(specialUse: string | null) {
 }
 function isSeen(message: Message) { return message.flags.includes('\\Seen'); }
 function withSeen(flags: string[], seen: boolean) {
+  return withFlag(flags, '\\Seen', seen);
+}
+function withFlag(flags: string[], flag: string, enabled: boolean) {
   const next = new Set(flags);
-  if (seen) next.add('\\Seen');
-  else next.delete('\\Seen');
+  if (enabled) next.add(flag);
+  else next.delete(flag);
   return [...next];
+}
+function adjustMailboxCount(
+  update: React.Dispatch<React.SetStateAction<MailboxInfo[]>>,
+  path: string,
+  totalDelta: number,
+  unreadDelta: number,
+) {
+  update((current) => current.map((mailbox) => mailbox.path === path
+    ? {
+      ...mailbox,
+      totalCount: Math.max(0, mailbox.totalCount + totalDelta),
+      unreadCount: Math.max(0, mailbox.unreadCount + unreadDelta),
+    }
+    : mailbox));
 }
 function prepareEmailHtml(html: string) { const base = '<base target="_blank">'; const head = html.match(/<head(?:\s[^>]*)?>/i); if (head?.index !== undefined) { const at = head.index + head[0].length; return `${html.slice(0, at)}${base}${html.slice(at)}`; } return `${base}${html}`; }

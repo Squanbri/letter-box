@@ -56,6 +56,9 @@ npm run dev
 синхронизировать «Входящие», «Отправленные», «Черновики», «Спам», «Корзину»,
 «Архив» и пользовательские папки. Выбранная папка запоминается для каждого
 аккаунта. Старые письма загружаются страницами по 50 при прокрутке списка.
+Письма можно отмечать важными, архивировать, перемещать между папками и
+удалять. Обычное удаление перемещает письмо в системную корзину, а удаление
+из самой корзины выполняется окончательно.
 
 Конфигурация через `.env` по-прежнему поддерживается для отладки backend без
 Electron. Файл `.env` исключён из Git.
@@ -105,6 +108,10 @@ Backend входит в Electron-приложение и автоматичес�
 | `GET` | `/accounts/:accountId/messages?mailbox=INBOX` | Локальный список писем |
 | `GET` | `/accounts/:accountId/messages/:uid?mailbox=INBOX` | Письмо с ленивой загрузкой тела |
 | `PATCH` | `/accounts/:accountId/messages/:uid/seen?mailbox=INBOX` | Изменение состояния прочитано/не прочитано |
+| `PATCH` | `/accounts/:accountId/messages/:uid/flagged?mailbox=INBOX` | Изменение флага «важное» |
+| `POST` | `/accounts/:accountId/messages/:uid/move?mailbox=INBOX` | Перемещение между папками |
+| `POST` | `/accounts/:accountId/messages/:uid/archive?mailbox=INBOX` | Архивирование письма |
+| `DELETE` | `/accounts/:accountId/messages/:uid?mailbox=INBOX` | Удаление письма |
 
 API слушает только `127.0.0.1:3000`.
 

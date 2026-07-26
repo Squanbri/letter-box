@@ -294,10 +294,90 @@ export class MailService {
     return this.mapRow(this.findRow(accountId, mailbox, uid)!, Boolean(row.body_loaded_at));
   }
 
+  async setFlagged(
+    accountId: string,
+    mailbox: string,
+    uid: number,
+    flagged: boolean,
+  ): Promise<MessageRecord> {
+    const row = this.requireRow(accountId, mailbox, uid);
+    await this.imap.setFlagged(accountId, mailbox, uid, flagged);
+    const flags = new Set(JSON.parse(row.flags) as string[]);
+    if (flagged) flags.add('\\Flagged');
+    else flags.delete('\\Flagged');
+    this.database.db.prepare(`
+      UPDATE messages SET flags = ?
+      WHERE account_id = ? AND mailbox = ? AND uid = ?
+    `).run(JSON.stringify([...flags]), accountId, mailbox, uid);
+    return this.mapRow(this.findRow(accountId, mailbox, uid)!, Boolean(row.body_loaded_at));
+  }
+
+  async moveMessage(
+    accountId: string,
+    mailbox: string,
+    uid: number,
+    destination: string,
+  ): Promise<{ moved: true }> {
+    this.requireRow(accountId, mailbox, uid);
+    const target = this.database.db.prepare(
+      'SELECT 1 FROM mailboxes WHERE account_id = ? AND path = ?',
+    ).get(accountId, destination);
+    if (!target) throw new NotFoundException(`Папка ${destination} не найдена`);
+    await this.imap.moveMessage(accountId, mailbox, uid, destination);
+    this.removeLocalMessage(accountId, mailbox, uid);
+    return { moved: true };
+  }
+
+  async archiveMessage(
+    accountId: string,
+    mailbox: string,
+    uid: number,
+  ): Promise<{ moved: true }> {
+    const archive = this.specialMailbox(accountId, '\\Archive');
+    if (!archive) throw new NotFoundException('Папка «Архив» не найдена');
+    return this.moveMessage(accountId, mailbox, uid, archive);
+  }
+
+  async deleteMessage(
+    accountId: string,
+    mailbox: string,
+    uid: number,
+  ): Promise<{ deleted: true }> {
+    this.requireRow(accountId, mailbox, uid);
+    const trash = this.specialMailbox(accountId, '\\Trash');
+    if (trash && trash !== mailbox) {
+      await this.imap.moveMessage(accountId, mailbox, uid, trash);
+    } else {
+      await this.imap.deleteMessage(accountId, mailbox, uid);
+    }
+    this.removeLocalMessage(accountId, mailbox, uid);
+    return { deleted: true };
+  }
+
   private findRow(accountId: string, mailbox: string, uid: number): MessageRow | undefined {
     return this.database.db.prepare(
       'SELECT * FROM messages WHERE account_id = ? AND mailbox = ? AND uid = ?',
     ).get(accountId, mailbox, uid) as MessageRow | undefined;
+  }
+
+  private requireRow(accountId: string, mailbox: string, uid: number): MessageRow {
+    const row = this.findRow(accountId, mailbox, uid);
+    if (!row) {
+      throw new NotFoundException(`Письмо с UID ${uid} отсутствует в локальной базе`);
+    }
+    return row;
+  }
+
+  private specialMailbox(accountId: string, specialUse: string): string | undefined {
+    return (this.database.db.prepare(
+      'SELECT path FROM mailboxes WHERE account_id = ? AND special_use = ?',
+    ).get(accountId, specialUse) as { path: string } | undefined)?.path;
+  }
+
+  private removeLocalMessage(accountId: string, mailbox: string, uid: number): void {
+    this.database.db.prepare(
+      'DELETE FROM messages WHERE account_id = ? AND mailbox = ? AND uid = ?',
+    ).run(accountId, mailbox, uid);
   }
 
   private mapRow(row: MessageRow, includeBody: boolean): MessageRecord {

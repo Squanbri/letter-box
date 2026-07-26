@@ -102,4 +102,24 @@ export const api = {
       `${accountPath(id)}/messages/${uid}/seen?mailbox=${encodeURIComponent(mailbox)}`,
       json('PATCH', { seen }),
     ),
+  setFlagged: (id: string, uid: number, flagged: boolean, mailbox = 'INBOX') =>
+    request<Message>(
+      `${accountPath(id)}/messages/${uid}/flagged?mailbox=${encodeURIComponent(mailbox)}`,
+      json('PATCH', { flagged }),
+    ),
+  moveMessage: (id: string, uid: number, mailbox: string, destination: string) =>
+    request<{ moved: true }>(
+      `${accountPath(id)}/messages/${uid}/move?mailbox=${encodeURIComponent(mailbox)}`,
+      json('POST', { destination }),
+    ),
+  archiveMessage: (id: string, uid: number, mailbox: string) =>
+    request<{ moved: true }>(
+      `${accountPath(id)}/messages/${uid}/archive?mailbox=${encodeURIComponent(mailbox)}`,
+      { method: 'POST' },
+    ),
+  deleteMessage: (id: string, uid: number, mailbox: string) =>
+    request<{ deleted: true }>(
+      `${accountPath(id)}/messages/${uid}?mailbox=${encodeURIComponent(mailbox)}`,
+      { method: 'DELETE' },
+    ),
 };

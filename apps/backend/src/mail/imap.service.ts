@@ -141,6 +141,43 @@ export class ImapService {
     });
   }
 
+  async setFlagged(
+    accountId: string,
+    mailbox: string,
+    uid: number,
+    flagged: boolean,
+  ): Promise<void> {
+    await this.withMailbox(accountId, mailbox, async (client) => {
+      const update = flagged
+        ? client.messageFlagsAdd(uid, ['\\Flagged'], { uid: true })
+        : client.messageFlagsRemove(uid, ['\\Flagged'], { uid: true });
+      if (!await update) {
+        throw new BadGatewayException(`Не удалось обновить флаг письма с UID ${uid}`);
+      }
+    });
+  }
+
+  async moveMessage(
+    accountId: string,
+    mailbox: string,
+    uid: number,
+    destination: string,
+  ): Promise<void> {
+    await this.withMailbox(accountId, mailbox, async (client) => {
+      if (!await client.messageMove(uid, destination, { uid: true })) {
+        throw new BadGatewayException(`Не удалось переместить письмо с UID ${uid}`);
+      }
+    });
+  }
+
+  async deleteMessage(accountId: string, mailbox: string, uid: number): Promise<void> {
+    await this.withMailbox(accountId, mailbox, async (client) => {
+      if (!await client.messageDelete(uid, { uid: true })) {
+        throw new BadGatewayException(`Не удалось удалить письмо с UID ${uid}`);
+      }
+    });
+  }
+
   private async withMailbox<T>(
     accountId: string,
     mailbox: string,
