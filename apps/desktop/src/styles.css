@@ -121,6 +121,25 @@ button.tab,
 
 .overview, .mail-page { min-height: 0; flex: 1; display: grid; grid-template-rows: auto auto 1fr; }
 .overview { overflow: auto; background: #f3f4f0; }
+.sync-settings {
+  display: flex;
+  align-items: center;
+  gap: 22px;
+  padding: 12px 24px;
+  border-bottom: 1px solid #d9dad5;
+  background: #eef0eb;
+  color: #5f625b;
+  font-size: 12px;
+}
+.sync-settings > span { color: #343630; font-weight: 650; }
+.sync-settings label { display: flex; align-items: center; gap: 7px; }
+.sync-settings select {
+  padding: 5px 8px;
+  border: 1px solid #cdd0c9;
+  border-radius: 7px;
+  color: #41433e;
+  background: white;
+}
 .account-grid { display: grid; gap: 14px; padding: 24px; }
 .overview-account { overflow: hidden; border: 1px solid #d8dad4; border-radius: 13px; background: white; }
 .overview-account .account-main {
@@ -146,9 +165,11 @@ button.tab,
 .account-summary { text-align: right; }
 .account-summary > strong { color: #31594a; font-size: 12px; }
 .overview-account > p { margin: 0; padding: 0 18px 14px 41px; color: #a23c30; font-size: 12px; }
-.overview-account footer { display: flex; align-items: center; justify-content: space-between; padding: 11px 18px; border-top: 1px solid #ecece8; }
+.overview-account footer { display: flex; align-items: center; gap: 18px; padding: 11px 18px; border-top: 1px solid #ecece8; }
 .overview-account footer > small { color: #85877f; }
 .overview-account footer div { display: flex; gap: 7px; }
+.overview-account footer div:last-child { margin-left: auto; }
+.auto-sync-toggle { display: flex; align-items: center; gap: 6px; color: #5f625b; font-size: 11px; }
 .page-actions { display: flex; gap: 8px; }
 .page-header .page-actions .secondary { color: #40433d; background: #e5e8e1; }
 .overview button.secondary { color: #40433d; background: #e5e8e1; }

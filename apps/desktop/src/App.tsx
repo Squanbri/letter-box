@@ -1,8 +1,21 @@
-import { useCallback, useEffect, useState } from 'react';
-import { api, type AccountInput, type AccountStatus, type Message } from './api';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import {
+  api,
+  type AccountInput,
+  type AccountStatus,
+  type Message,
+  type SyncResult,
+} from './api';
 
 const TABS_KEY = 'letter-box.open-account-tabs';
 const ACTIVE_KEY = 'letter-box.active-tab';
+const BACKGROUND_SYNC_KEY = 'letter-box.background-sync';
+
+interface BackgroundSyncSettings {
+  intervalMinutes: number;
+  disabledAccountIds: string[];
+  notifications: boolean;
+}
 
 export function App() {
   const [accounts, setAccounts] = useState<AccountStatus[] | null>(null);
@@ -12,6 +25,12 @@ export function App() {
   const [error, setError] = useState<string | null>(null);
   const [syncingIds, setSyncingIds] = useState<Set<string>>(new Set());
   const [syncVersions, setSyncVersions] = useState<Record<string, number>>({});
+  const [backgroundSync, setBackgroundSync] = useState<BackgroundSyncSettings>(
+    readBackgroundSyncSettings,
+  );
+  const syncPromises = useRef(new Map<string, Promise<SyncResult>>());
+  const accountsRef = useRef<AccountStatus[]>([]);
+  const backgroundSyncRef = useRef(backgroundSync);
 
   const refresh = useCallback(async () => {
     try {
@@ -28,6 +47,11 @@ export function App() {
   useEffect(() => { localStorage.setItem(TABS_KEY, JSON.stringify(tabs)); }, [tabs]);
   useEffect(() => { localStorage.setItem(ACTIVE_KEY, active); }, [active]);
   useEffect(() => {
+    localStorage.setItem(BACKGROUND_SYNC_KEY, JSON.stringify(backgroundSync));
+    backgroundSyncRef.current = backgroundSync;
+  }, [backgroundSync]);
+  useEffect(() => { accountsRef.current = accounts ?? []; }, [accounts]);
+  useEffect(() => {
     if (active !== 'overview' && accounts && !accounts.some((item) => item.id === active)) {
       setActive('overview');
     } else if (active !== 'overview' && accounts?.some((item) => item.id === active)) {
@@ -43,31 +67,68 @@ export function App() {
     setTabs((current) => current.filter((item) => item !== id));
     if (active === id) setActive('overview');
   };
-  const syncAccount = useCallback(async (id: string) => {
-    setSyncingIds((current) => new Set(current).add(id));
-    setAccounts((current) => current?.map((account) =>
-      account.id === id ? { ...account, status: 'syncing' } : account,
-    ) ?? null);
-    try {
-      await api.sync(id);
-      setSyncVersions((current) => ({ ...current, [id]: (current[id] ?? 0) + 1 }));
-    } finally {
-      setSyncingIds((current) => {
-        const next = new Set(current);
-        next.delete(id);
-        return next;
-      });
-      await refresh();
-    }
+  const syncAccount = useCallback((id: string, notificationEmail?: string) => {
+    const running = syncPromises.current.get(id);
+    if (running) return running;
+    const task = (async () => {
+      setSyncingIds((current) => new Set(current).add(id));
+      setAccounts((current) => current?.map((account) =>
+        account.id === id ? { ...account, status: 'syncing' } : account,
+      ) ?? null);
+      try {
+        const result = await api.sync(id);
+        setSyncVersions((current) => ({ ...current, [id]: (current[id] ?? 0) + 1 }));
+        if (notificationEmail && result.added > 0) {
+          showNewMailNotification(notificationEmail, result.added);
+        }
+        return result;
+      } finally {
+        syncPromises.current.delete(id);
+        setSyncingIds((current) => {
+          const next = new Set(current);
+          next.delete(id);
+          return next;
+        });
+        await refresh();
+      }
+    })();
+    syncPromises.current.set(id, task);
+    return task;
   }, [refresh]);
   const syncAll = async () => {
     const ids = accounts?.map((account) => account.id) ?? [];
-    const results = await Promise.allSettled(ids.map(syncAccount));
+    const results = await Promise.allSettled(ids.map((id) => syncAccount(id)));
     const failures = results.filter((result) => result.status === 'rejected');
     if (failures.length > 0) {
       setError(`Не удалось синхронизировать аккаунтов: ${failures.length}`);
     }
   };
+  const backgroundSyncAll = useCallback(() => {
+    if (!navigator.onLine) return;
+    const settings = backgroundSyncRef.current;
+    for (const account of accountsRef.current) {
+      if (!settings.disabledAccountIds.includes(account.id)) {
+        void syncAccount(
+          account.id,
+          settings.notifications && account.lastSyncAt ? account.email : undefined,
+        ).catch(() => undefined);
+      }
+    }
+  }, [syncAccount]);
+
+  useEffect(() => {
+    const initial = window.setTimeout(backgroundSyncAll, 10_000);
+    const interval = window.setInterval(
+      backgroundSyncAll,
+      backgroundSync.intervalMinutes * 60_000,
+    );
+    window.addEventListener('online', backgroundSyncAll);
+    return () => {
+      window.clearTimeout(initial);
+      window.clearInterval(interval);
+      window.removeEventListener('online', backgroundSyncAll);
+    };
+  }, [backgroundSyncAll, backgroundSync.intervalMinutes]);
 
   if (!accounts) {
     return <AppStatus error={Boolean(error)} detail={error ?? 'Загрузка аккаунтов…'} retry={refresh} />;
@@ -99,6 +160,8 @@ export function App() {
           onOpen={openAccount}
           onReconnect={setEditing}
           syncingIds={syncingIds}
+          backgroundSync={backgroundSync}
+          onBackgroundSyncChange={setBackgroundSync}
           onSyncAll={() => void syncAll()}
           onDelete={async (account) => {
             if (!window.confirm(`Удалить аккаунт ${account.email} и все его локальные данные?`)) return;
@@ -145,10 +208,20 @@ export function App() {
 }
 
 function Overview({
-  accounts, syncingIds, onAdd, onOpen, onReconnect, onDelete, onSyncAll,
+  accounts,
+  syncingIds,
+  backgroundSync,
+  onBackgroundSyncChange,
+  onAdd,
+  onOpen,
+  onReconnect,
+  onDelete,
+  onSyncAll,
 }: {
   accounts: AccountStatus[];
   syncingIds: Set<string>;
+  backgroundSync: BackgroundSyncSettings;
+  onBackgroundSyncChange: (settings: BackgroundSyncSettings) => void;
   onAdd: () => void;
   onOpen: (id: string) => void;
   onReconnect: (account: AccountStatus) => void;
@@ -167,6 +240,35 @@ function Overview({
           <button onClick={onAdd}>Добавить аккаунт</button>
         </div>
       </header>
+      <div className="sync-settings">
+        <span>Фоновая синхронизация</span>
+        <label>
+          Интервал
+          <select
+            value={backgroundSync.intervalMinutes}
+            onChange={(event) => onBackgroundSyncChange({
+              ...backgroundSync,
+              intervalMinutes: Number(event.target.value),
+            })}
+          >
+            <option value={5}>5 минут</option>
+            <option value={15}>15 минут</option>
+            <option value={30}>30 минут</option>
+          </select>
+        </label>
+        <label>
+          <input
+            type="checkbox"
+            checked={backgroundSync.notifications}
+            onChange={(event) => void changeNotificationSetting(
+              event.target.checked,
+              backgroundSync,
+              onBackgroundSyncChange,
+            )}
+          />
+          Уведомления о новых письмах
+        </label>
+      </div>
       <div className="account-grid">
         {accounts.map((account) => (
           <article className="overview-account" key={account.id}>
@@ -180,6 +282,19 @@ function Overview({
             </button>
             {account.lastError && <p>{account.lastError}</p>}
             <footer>
+              <label className="auto-sync-toggle">
+                <input
+                  type="checkbox"
+                  checked={!backgroundSync.disabledAccountIds.includes(account.id)}
+                  onChange={(event) => onBackgroundSyncChange({
+                    ...backgroundSync,
+                    disabledAccountIds: event.target.checked
+                      ? backgroundSync.disabledAccountIds.filter((id) => id !== account.id)
+                      : [...backgroundSync.disabledAccountIds, account.id],
+                  })}
+                />
+                Автообновление
+              </label>
               <small>{account.lastSyncAt ? `Обновлено ${formatDate(account.lastSyncAt)}` : 'Ещё не синхронизирован'}</small>
               <div>
                 <button className="secondary" onClick={() => onReconnect(account)}>Переподключить</button>
@@ -207,7 +322,7 @@ function Mailbox({
   account: AccountStatus;
   syncing: boolean;
   syncVersion: number;
-  onSync: () => Promise<void>;
+  onSync: () => Promise<unknown>;
   onAccountChanged: () => Promise<void>;
   onUnreadChange: (delta: number) => void;
 }) {
@@ -349,6 +464,60 @@ function AppStatus({ detail, error, retry }: { detail: string; error: boolean; r
   return <main className="full-status"><div className="status-mark">✉</div><h1>Letter Box</h1><p className={error ? 'status-error' : ''}>{detail}</p>{error ? <button onClick={() => void retry()}>Повторить</button> : <div className="status-spinner" />}</main>;
 }
 function readTabs(): string[] { try { const value = JSON.parse(localStorage.getItem(TABS_KEY) ?? '[]'); return Array.isArray(value) ? value.filter((id): id is string => typeof id === 'string') : []; } catch { return []; } }
+function readBackgroundSyncSettings(): BackgroundSyncSettings {
+  const fallback: BackgroundSyncSettings = {
+    intervalMinutes: 5,
+    disabledAccountIds: [],
+    notifications: false,
+  };
+  try {
+    const value = JSON.parse(localStorage.getItem(BACKGROUND_SYNC_KEY) ?? '{}') as Partial<BackgroundSyncSettings>;
+    return {
+      intervalMinutes: [5, 15, 30].includes(value.intervalMinutes ?? 0)
+        ? value.intervalMinutes!
+        : fallback.intervalMinutes,
+      disabledAccountIds: Array.isArray(value.disabledAccountIds)
+        ? value.disabledAccountIds.filter((id): id is string => typeof id === 'string')
+        : fallback.disabledAccountIds,
+      notifications: value.notifications === true,
+    };
+  } catch {
+    return fallback;
+  }
+}
+async function changeNotificationSetting(
+  enabled: boolean,
+  settings: BackgroundSyncSettings,
+  update: (settings: BackgroundSyncSettings) => void,
+) {
+  if (!enabled) {
+    update({ ...settings, notifications: false });
+    return;
+  }
+  if (typeof Notification === 'undefined') {
+    update({ ...settings, notifications: false });
+    return;
+  }
+  const permission = Notification.permission === 'granted'
+    ? 'granted'
+    : await Notification.requestPermission();
+  update({ ...settings, notifications: permission === 'granted' });
+}
+function showNewMailNotification(email: string, count: number) {
+  if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return;
+  const lastTwo = count % 100;
+  const last = count % 10;
+  const suffix = lastTwo >= 11 && lastTwo <= 14
+    ? 'новых писем'
+    : last === 1
+      ? 'новое письмо'
+      : last >= 2 && last <= 4
+        ? 'новых письма'
+        : 'новых писем';
+  new Notification('Letter Box', {
+    body: `${email}: ${count} ${suffix}`,
+  });
+}
 function providerName(provider: AccountStatus['provider']) { return provider === 'mailru' ? 'Mail.ru' : 'Яндекс'; }
 function statusName(status: AccountStatus['status']) { return status === 'connected' ? 'Подключён' : status === 'syncing' ? 'Синхронизация…' : status === 'error' ? 'Требует внимания' : 'Не проверен'; }
 function errorMessage(reason: unknown) { return reason instanceof Error ? reason.message : 'Произошла неизвестная ошибка'; }
