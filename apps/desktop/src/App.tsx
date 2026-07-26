@@ -59,15 +59,18 @@ export function App() {
   }, [refresh, session]);
   useEffect(() => {
     if (!session) return undefined;
-    return subscribeToServerEvents((event) => {
-    void refresh();
-    if (event.type === 'sync.completed') {
-      setSyncVersions((current) => ({
-        ...current,
-        [event.accountId]: (current[event.accountId] ?? 0) + 1,
-      }));
-    }
-    });
+    return subscribeToServerEvents(
+      (event) => {
+        void refresh();
+        if (event.type === 'sync.completed') {
+          setSyncVersions((current) => ({
+            ...current,
+            [event.accountId]: (current[event.accountId] ?? 0) + 1,
+          }));
+        }
+      },
+      () => void refresh(),
+    );
   }, [refresh, session]);
   useEffect(() => { localStorage.setItem(TABS_KEY, JSON.stringify(tabs)); }, [tabs]);
   useEffect(() => { localStorage.setItem(ACTIVE_KEY, active); }, [active]);

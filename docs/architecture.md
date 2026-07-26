@@ -73,3 +73,7 @@ durable BullMQ queue, and can later host separate AI job queues.
 
 REST remains the command/query transport. Socket.IO events notify all connected
 clients about synchronization progress and later about message mutations.
+The liveness endpoint covers the API process itself; readiness additionally
+checks PostgreSQL, Redis, and at least one registered BullMQ worker. Socket
+connections are closed when their access JWT expires. After reconnecting with
+a refreshed token, clients reconcile account and queue state through REST.

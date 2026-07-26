@@ -182,6 +182,7 @@ export const api = {
 
 export function subscribeToServerEvents(
   listener: (event: ServerEvent) => void,
+  connected?: () => void,
 ): () => void {
   const socket = io(API_URL, {
     transports: ['websocket'],
@@ -190,10 +191,11 @@ export function subscribeToServerEvents(
   });
   const refreshSocketAuth = () => {
     socket.auth = { token: readAuthSession()?.accessToken };
-    if (!socket.connected) socket.connect();
+    socket.disconnect().connect();
   };
   window.addEventListener('letter-box:auth-refreshed', refreshSocketAuth);
   socket.on('server.event', listener);
+  if (connected) socket.on('connect', connected);
   return () => {
     window.removeEventListener('letter-box:auth-refreshed', refreshSocketAuth);
     socket.disconnect();

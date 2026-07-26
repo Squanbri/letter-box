@@ -152,7 +152,8 @@ npm run db:import:sqlite -- ./data/letter-box.db
 
 | Метод | Путь | Назначение |
 | --- | --- | --- |
-| `GET` | `/health` | Проверка доступности server |
+| `GET` | `/health` или `/health/live` | Liveness API-процесса |
+| `GET` | `/health/ready` | PostgreSQL, Redis и наличие sync worker |
 | `GET` | `/accounts` | Список аккаунтов и их статусы |
 | `POST` | `/accounts` | Проверка и добавление аккаунта |
 | `PUT` | `/accounts/:accountId` | Переподключение аккаунта |

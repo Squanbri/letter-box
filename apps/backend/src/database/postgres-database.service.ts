@@ -52,6 +52,10 @@ export class PostgresDatabaseService implements OnModuleInit, OnModuleDestroy {
     return this.pool.query<Row>(text, values);
   }
 
+  async ping(): Promise<void> {
+    await this.query('SELECT 1');
+  }
+
   async transaction<T>(run: (client: PoolClient) => Promise<T>): Promise<T> {
     if (!this.pool) {
       throw new ServiceUnavailableException('PostgreSQL не настроен');

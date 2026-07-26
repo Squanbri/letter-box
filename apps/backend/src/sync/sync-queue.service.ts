@@ -89,6 +89,13 @@ export class SyncQueueService implements OnModuleInit, OnModuleDestroy {
     };
   }
 
+  async workerCount(): Promise<number> {
+    if (!this.queue) {
+      throw new ServiceUnavailableException('Очередь синхронизации недоступна');
+    }
+    return this.queue.getWorkersCount();
+  }
+
   private connection(): { url: string } {
     const url = process.env.REDIS_URL;
     if (!url) {

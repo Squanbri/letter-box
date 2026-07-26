@@ -45,7 +45,10 @@ async function startWorker(): Promise<void> {
   await worker.waitUntilReady();
   console.info('[worker:sync] ready');
 
+  let stopping = false;
   const shutdown = async (): Promise<void> => {
+    if (stopping) return;
+    stopping = true;
     await worker.close();
     await application.close();
   };

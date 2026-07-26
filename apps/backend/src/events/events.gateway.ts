@@ -32,8 +32,14 @@ export class EventsGateway implements OnGatewayConnection {
       return;
     }
     try {
-      const payload = await this.jwt.verifyAsync<{ sub: string }>(token);
+      const payload = await this.jwt.verifyAsync<{ sub: string; exp?: number }>(token);
       socket.data.userId = payload.sub;
+      if (payload.exp) {
+        const remaining = Math.max(0, payload.exp * 1_000 - Date.now());
+        const expiration = setTimeout(() => socket.disconnect(true), remaining);
+        expiration.unref();
+        socket.once('disconnect', () => clearTimeout(expiration));
+      }
     } catch {
       socket.disconnect(true);
     }
