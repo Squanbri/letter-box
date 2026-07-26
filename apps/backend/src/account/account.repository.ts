@@ -5,7 +5,7 @@ import type { AccountConfig } from '../runtime';
 
 export interface AccountRow {
   id: string;
-  provider: 'mailru' | 'yandex';
+  provider: 'mailru' | 'yandex' | 'gmail';
   email: string;
   status: AccountStatus['status'];
   last_error: string | null;

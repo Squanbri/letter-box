@@ -69,11 +69,17 @@ export class AccountService implements OnModuleInit {
 
   prepare(input: SaveAccountInput, id: string = randomUUID()): AccountConfig {
     const email = input.email.trim().toLowerCase();
-    const password = input.password.trim();
+    const password = input.provider === 'gmail'
+      ? input.password.replace(/\s+/g, '')
+      : input.password.trim();
     if (!email || !password) throw new BadRequestException('Укажите email и пароль приложения');
-    const server = input.provider === 'yandex'
-      ? { host: 'imap.yandex.ru', port: 993, secure: true }
-      : { host: 'imap.mail.ru', port: 993, secure: true };
+    const servers = {
+      mailru: { host: 'imap.mail.ru', port: 993, secure: true },
+      yandex: { host: 'imap.yandex.ru', port: 993, secure: true },
+      gmail: { host: 'imap.gmail.com', port: 993, secure: true },
+    } as const;
+    const server = servers[input.provider];
+    if (!server) throw new BadRequestException('Неподдерживаемый почтовый сервис');
     return { id, ...server, provider: input.provider, email, password };
   }
 
