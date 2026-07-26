@@ -1,5 +1,5 @@
 import { Controller, Get, Inject, Param, ParseIntPipe, Post, Query } from '@nestjs/common';
-import { MailService } from './mail.service';
+import { MailService, SyncResult } from './mail.service';
 import { MessageRecord } from './mail.types';
 
 @Controller('accounts/:accountId')
@@ -12,7 +12,7 @@ export class MailController {
   }
 
   @Post('mail/sync')
-  sync(@Param('accountId') accountId: string): Promise<{ synced: number }> {
+  sync(@Param('accountId') accountId: string): Promise<SyncResult> {
     return this.mail.syncInbox(accountId);
   }
 

@@ -60,7 +60,10 @@ export const api = {
   connect: (id: string) =>
     request<{ connected: true }>(`${accountPath(id)}/imap/connect`, { method: 'POST' }),
   sync: (id: string) =>
-    request<{ synced: number }>(`${accountPath(id)}/mail/sync`, { method: 'POST' }),
+    request<{ synced: number; added: number; updated: number; removed: number }>(
+      `${accountPath(id)}/mail/sync`,
+      { method: 'POST' },
+    ),
   messages: (id: string, mailbox = 'INBOX') =>
     request<Message[]>(`${accountPath(id)}/messages?mailbox=${encodeURIComponent(mailbox)}`),
   message: (id: string, uid: number, mailbox = 'INBOX') =>

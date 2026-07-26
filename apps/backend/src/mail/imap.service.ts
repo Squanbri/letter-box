@@ -5,7 +5,7 @@ import {
 } from '@nestjs/common';
 import { ImapFlow, type FetchMessageObject, type ImapFlowOptions } from 'imapflow';
 import { simpleParser } from 'mailparser';
-import { MessageMetadata } from './mail.types';
+import { MailboxChanges, MessageFlags, MessageMetadata } from './mail.types';
 import { AccountService } from '../account/account.service';
 
 @Injectable()
@@ -16,28 +16,51 @@ export class ImapService {
     await this.withInbox(accountId, async () => undefined);
   }
 
-  async fetchMetadata(accountId: string): Promise<{
-    uidValidity: string;
-    messages: MessageMetadata[];
-  }> {
+  async fetchChanges(
+    accountId: string,
+    knownUids: number[],
+    expectedUidValidity?: string,
+    initialLimit = 500,
+  ): Promise<MailboxChanges> {
     return this.withInbox(accountId, async (client) => {
-      const messages: MessageMetadata[] = [];
-
-      for await (const message of client.fetch(
-        '1:*',
-        { uid: true, envelope: true, flags: true, size: true },
-      )) {
-        messages.push(this.toMetadata(message));
-      }
-
       if (!client.mailbox) {
         throw new BadGatewayException('Папка INBOX не открыта');
       }
-
-      return {
-        uidValidity: String(client.mailbox.uidValidity),
-        messages,
-      };
+      const uidValidity = String(client.mailbox.uidValidity);
+      const reset = Boolean(expectedUidValidity && expectedUidValidity !== uidValidity);
+      const serverUids = await client.search({ all: true }, { uid: true }) || [];
+      const effectiveKnown = reset ? [] : knownUids;
+      const knownSet = new Set(effectiveKnown);
+      const newUids = selectMetadataUids(
+        serverUids,
+        effectiveKnown,
+        initialLimit,
+      );
+      const messages: MessageMetadata[] = [];
+      if (newUids.length > 0) {
+        for await (const message of client.fetch(
+          newUids,
+          { uid: true, envelope: true, flags: true, size: true },
+          { uid: true },
+        )) {
+          messages.push(this.toMetadata(message));
+        }
+      }
+      const existingUids = serverUids.filter((uid) => knownSet.has(uid));
+      const flagUpdates: MessageFlags[] = [];
+      if (existingUids.length > 0) {
+        for await (const message of client.fetch(
+          existingUids,
+          { uid: true, flags: true },
+          { uid: true },
+        )) {
+          flagUpdates.push({
+            uid: message.uid,
+            flags: Array.from(message.flags ?? []),
+          });
+        }
+      }
+      return { uidValidity, reset, serverUids, messages, flagUpdates };
     });
   }
 
@@ -166,4 +189,16 @@ export class ImapService {
       size: message.size ?? 0,
     };
   }
+}
+
+export function selectMetadataUids(
+  serverUids: number[],
+  knownUids: number[],
+  limit: number,
+): number[] {
+  if (knownUids.length === 0) {
+    return serverUids.slice(-limit);
+  }
+  const highestKnownUid = knownUids.reduce((highest, uid) => Math.max(highest, uid), 0);
+  return serverUids.filter((uid) => uid > highestKnownUid).slice(0, limit);
 }
