@@ -1,0 +1,21 @@
+{
+  "name": "letter-box",
+  "version": "0.1.0",
+  "private": true,
+  "workspaces": [
+    "apps/*"
+  ],
+  "scripts": {
+    "dev": "concurrently -k -n backend-build,desktop -c blue,magenta \"npm run dev -w @letter-box/backend\" \"npm run dev -w @letter-box/desktop\"",
+    "build": "npm run build -w @letter-box/backend && npm run build -w @letter-box/desktop",
+    "typecheck": "npm run typecheck -w @letter-box/backend && npm run typecheck -w @letter-box/desktop",
+    "dist:mac": "npm run build && npm run dist:mac -w @letter-box/desktop"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.0",
+    "typescript": "^5.8.3"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}
