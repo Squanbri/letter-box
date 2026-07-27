@@ -4,7 +4,7 @@ import {
   useQuery,
   useQueryClient,
 } from '@tanstack/react-query';
-import type { Message } from '../../shared/api/client';
+import type { Message, SendMessageInput } from '../../shared/api/client';
 import { api } from '../../shared/api/client';
 import { accountKeys } from '../accounts/accounts';
 
@@ -172,4 +172,30 @@ export function useMessageActions(accountId: string) {
   });
 
   return { seen, flagged, move, archive, remove };
+}
+
+export function useSendMessageMutation(accountId: string) {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (input: SendMessageInput) => api.sendMessage(accountId, input),
+    onSuccess: async (result) => {
+      await Promise.all([
+        client.invalidateQueries({ queryKey: mailKeys.mailboxes(accountId) }),
+        client.invalidateQueries({ queryKey: accountKeys.all }),
+        result.sentMailbox
+          ? client.invalidateQueries({
+            queryKey: ['mail', accountId, 'messages', result.sentMailbox],
+          })
+          : Promise.resolve(),
+      ]);
+      if (result.sentMailbox) {
+        void api.sync(accountId, result.sentMailbox).then(() => {
+          void client.invalidateQueries({
+            queryKey: ['mail', accountId, 'messages', result.sentMailbox],
+          });
+          void client.invalidateQueries({ queryKey: mailKeys.mailboxes(accountId) });
+        }).catch(() => undefined);
+      }
+    },
+  });
 }

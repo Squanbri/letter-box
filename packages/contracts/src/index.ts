@@ -70,6 +70,23 @@ export interface SyncResult {
   removed: number;
 }
 
+export interface SendMessageInput {
+  to: string[];
+  cc?: string[];
+  bcc?: string[];
+  subject: string;
+  text: string;
+  inReplyTo?: string;
+  references?: string;
+}
+
+export interface SendMessageResult {
+  messageId: string;
+  accepted: string[];
+  rejected: string[];
+  sentMailbox: string | null;
+}
+
 export interface SyncStatus {
   mailboxes: string[];
 }

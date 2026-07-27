@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Badge, Button, Text, Title } from '@mantine/core';
+import { Badge, Button, Group, Text, Title } from '@mantine/core';
 import { MESSAGE_TAGS } from '@letter-box/contracts';
 import type { AccountStatus, MailboxInfo, Message } from '../../shared/api/client';
 import { errorMessage, isSeen, mailboxTitle, tagLabel } from '../../shared/lib/format';
@@ -13,6 +13,11 @@ import {
   useTagCountsQuery,
 } from '../../state/mail/mail';
 import { useSync } from '../../state/sync/SyncProvider';
+import {
+  buildComposeDraft,
+  ComposeDialog,
+  type ComposeDraft,
+} from './components/ComposeDialog';
 import { MailboxSidebar } from './components/MailboxSidebar';
 import { MessageList } from './components/MessageList';
 import { MessageViewer } from './components/MessageViewer';
@@ -33,6 +38,7 @@ export function MailboxPage({ account }: { account: AccountStatus }) {
   const [selectedTag, setSelectedTag] = useState<string | null>(null);
   const [selectedUid, setSelectedUid] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [composeDraft, setComposeDraft] = useState<ComposeDraft | null>(null);
   const mailboxesQuery = useMailboxesQuery(account.id);
   const mailboxes = mailboxesQuery.data?.length ? mailboxesQuery.data : fallbackMailboxes;
   const messagesQuery = useMessagesQuery(account.id, selectedMailbox, selectedTag);
@@ -96,8 +102,21 @@ export function MailboxPage({ account }: { account: AccountStatus }) {
   return (
     <section className={visibleError ? 'mail-page has-error' : 'mail-page'}>
       <header className="page-header">
-        <div><Title order={1}>{mailboxTitle(mailboxes, selectedMailbox)}</Title><Text size="xs" c="dimmed">{account.email}</Text></div>
-        <Button loading={currentSyncing} onClick={() => void syncAccount(account.id, selectedMailbox).catch((reason) => setError(errorMessage(reason)))}>Обновить</Button>
+        <div>
+          <Title order={1}>{mailboxTitle(mailboxes, selectedMailbox)}</Title>
+          <Text size="xs" c="dimmed">{account.email}</Text>
+        </div>
+        <Group gap="xs">
+          <Button variant="light" onClick={() => setComposeDraft(buildComposeDraft('new'))}>
+            Написать
+          </Button>
+          <Button
+            loading={currentSyncing}
+            onClick={() => void syncAccount(account.id, selectedMailbox).catch((reason) => setError(errorMessage(reason)))}
+          >
+            Обновить
+          </Button>
+        </Group>
       </header>
       {visibleError && <ErrorBanner message={visibleError} />}
       <div className="mail-layout">
@@ -140,6 +159,8 @@ export function MailboxPage({ account }: { account: AccountStatus }) {
           pending={pending}
           seenPending={actions.seen.isPending}
           flaggedPending={actions.flagged.isPending}
+          onReply={(message) => setComposeDraft(buildComposeDraft('reply', message))}
+          onForward={(message) => setComposeDraft(buildComposeDraft('forward', message))}
           onSeen={(message, value) => actions.seen.mutate({ message, value })}
           onFlagged={(message, value) => actions.flagged.mutate({ message, value })}
           onMove={(message, destination) => actions.move.mutate(
@@ -153,6 +174,15 @@ export function MailboxPage({ account }: { account: AccountStatus }) {
           }}
         />
       </div>
+      {composeDraft && (
+        <ComposeDialog
+          accountId={account.id}
+          fromEmail={account.email}
+          opened
+          draft={composeDraft}
+          onClose={() => setComposeDraft(null)}
+        />
+      )}
     </section>
   );
 }

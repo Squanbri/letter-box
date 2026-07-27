@@ -5,6 +5,8 @@ import type {
   AuthSession,
   MailboxRecord,
   MessageRecord,
+  SendMessageInput,
+  SendMessageResult,
   SyncResult,
   SyncStatus,
 } from '@letter-box/contracts';
@@ -17,6 +19,8 @@ export type {
   AuthSession,
   MailboxRecord as MailboxInfo,
   MessageRecord as Message,
+  SendMessageInput,
+  SendMessageResult,
   SyncResult,
 } from '@letter-box/contracts';
 
@@ -181,6 +185,11 @@ export const api = {
     request<{ deleted: true }>(
       `${accountPath(id)}/messages/${uid}?mailbox=${encodeURIComponent(mailbox)}`,
       { method: 'DELETE' },
+    ),
+  sendMessage: (id: string, input: SendMessageInput) =>
+    request<SendMessageResult>(
+      `${accountPath(id)}/messages/send`,
+      json('POST', input),
     ),
 };
 

@@ -7,13 +7,21 @@ import {
 import { AccountService } from '../account/account.service';
 import { ImapService } from './imap.service';
 import { MailboxRecord, MessageRecord, MessageRow } from './mail.types';
-import type { SyncResult } from '@letter-box/contracts';
+import type {
+  SendMessageInput,
+  SendMessageResult,
+  SyncResult,
+} from '@letter-box/contracts';
+import { BadRequestException } from '@nestjs/common';
 import { EventsGateway } from '../events/events.gateway';
 import {
   MAIL_REPOSITORY,
   MailRepositoryContract,
 } from '../database/repository.contracts';
+import { SmtpService } from './smtp.service';
 export type { SyncResult } from '@letter-box/contracts';
+
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 @Injectable()
 export class MailService {
@@ -25,6 +33,7 @@ export class MailService {
   constructor(
     @Inject(MAIL_REPOSITORY) private readonly repository: MailRepositoryContract,
     @Inject(ImapService) private readonly imap: ImapService,
+    @Inject(SmtpService) private readonly smtp: SmtpService,
     @Inject(AccountService) private readonly accounts: AccountService,
     @Optional() @Inject(EventsGateway) private readonly events?: EventsGateway,
   ) {}
@@ -251,6 +260,74 @@ export class MailService {
     return { deleted: true };
   }
 
+  async sendMessage(
+    accountId: string,
+    input: SendMessageInput,
+  ): Promise<SendMessageResult> {
+    await this.accounts.get(accountId);
+    const normalized = this.normalizeSendInput(input);
+    const result = await this.smtp.send(accountId, normalized);
+    const sentMailbox = await this.specialMailbox(accountId, '\\Sent') ?? null;
+    if (sentMailbox) {
+      try {
+        await this.imap.appendMessage(accountId, sentMailbox, result.raw, ['\\Seen']);
+      } catch (error) {
+        console.warn('[backend:mail] Не удалось сохранить копию в «Отправленные»', {
+          accountId,
+          mailbox: sentMailbox,
+          error: this.message(error),
+        });
+      }
+    }
+    return {
+      messageId: result.messageId,
+      accepted: result.accepted,
+      rejected: result.rejected,
+      sentMailbox,
+    };
+  }
+
+  private normalizeSendInput(input: SendMessageInput): SendMessageInput {
+    const to = this.parseAddresses(input.to, 'to');
+    if (to.length === 0) {
+      throw new BadRequestException('Укажите хотя бы одного получателя');
+    }
+    const cc = this.parseAddresses(input.cc ?? [], 'cc');
+    const bcc = this.parseAddresses(input.bcc ?? [], 'bcc');
+    if (to.length + cc.length + bcc.length > 50) {
+      throw new BadRequestException('Слишком много получателей (максимум 50)');
+    }
+    const subject = typeof input.subject === 'string' ? input.subject.trim() : '';
+    const text = typeof input.text === 'string' ? input.text : '';
+    if (!text.trim() && !subject) {
+      throw new BadRequestException('Укажите тему или текст письма');
+    }
+    return {
+      to,
+      cc: cc.length > 0 ? cc : undefined,
+      bcc: bcc.length > 0 ? bcc : undefined,
+      subject,
+      text,
+      inReplyTo: optionalHeader(input.inReplyTo),
+      references: optionalHeader(input.references),
+    };
+  }
+
+  private parseAddresses(value: string[] | string, field: string): string[] {
+    const items = Array.isArray(value)
+      ? value.flatMap((item) => item.split(/[,;]+/))
+      : String(value).split(/[,;]+/);
+    const addresses = [...new Set(
+      items.map((item) => item.trim()).filter(Boolean),
+    )];
+    for (const address of addresses) {
+      if (!EMAIL_PATTERN.test(address)) {
+        throw new BadRequestException(`Некорректный адрес в поле ${field}: ${address}`);
+      }
+    }
+    return addresses;
+  }
+
   private findRow(
     accountId: string,
     mailbox: string,
@@ -297,4 +374,10 @@ export class MailService {
   private message(error: unknown): string {
     return error instanceof Error ? error.message : 'Неизвестная ошибка IMAP';
   }
+}
+
+function optionalHeader(value: string | undefined): string | undefined {
+  if (typeof value !== 'string') return undefined;
+  const trimmed = value.trim();
+  return trimmed || undefined;
 }
