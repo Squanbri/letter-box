@@ -53,6 +53,7 @@ function repositoryMock(
     replaceMailboxes: async () => undefined,
     saveMessages: async () => undefined,
     findMessage: async () => undefined,
+    listThread: async () => [],
     classificationCandidateUids: async () => [],
     saveClassificationPreparations: async () => undefined,
     saveBody: async () => undefined,
@@ -94,6 +95,10 @@ function row(partial: Partial<MessageRow> & Pick<MessageRow, 'uid' | 'mailbox'>)
     classification_status: 'pending',
     classified_at: null,
     tags: [],
+    message_id: null,
+    in_reply_to: null,
+    references_header: null,
+    thread_id: null,
     ...partial,
   };
 }
@@ -167,6 +172,10 @@ test('passes classification candidates and applies incremental sync results', as
         date: new Date(3_000).toISOString(),
         flags: ['\\Seen'],
         size: 3,
+        messageId: '<new@example.com>',
+        inReplyTo: null,
+        references: [],
+        threadId: '<new@example.com>',
       }],
       classificationPreparations: [
         { uid: 1, text: 'Existing unread', status: 'pending' as const },

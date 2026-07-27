@@ -18,6 +18,8 @@ export const mailKeys = {
     ['mail', accountId, 'messages', mailbox, tag ?? 'all'] as const,
   message: (accountId: string, mailbox: string, uid: number) =>
     ['mail', accountId, 'message', mailbox, uid] as const,
+  thread: (accountId: string, mailbox: string, uid: number) =>
+    ['mail', accountId, 'thread', mailbox, uid] as const,
   syncStatus: (accountId: string) => ['mail', accountId, 'sync-status'] as const,
   tags: (accountId: string, mailbox: string) =>
     ['mail', accountId, 'tags', mailbox] as const,
@@ -92,6 +94,19 @@ export function useMessageQuery(
     queryKey: mailKeys.message(accountId, mailbox, uid ?? 0),
     queryFn: () => api.message(accountId, uid!, mailbox),
     enabled: uid !== null,
+  });
+}
+
+export function useMessageThreadQuery(
+  accountId: string,
+  mailbox: string,
+  uid: number | null,
+  enabled = true,
+) {
+  return useQuery({
+    queryKey: mailKeys.thread(accountId, mailbox, uid ?? 0),
+    queryFn: () => api.messageThread(accountId, uid!, mailbox),
+    enabled: uid !== null && enabled,
   });
 }
 

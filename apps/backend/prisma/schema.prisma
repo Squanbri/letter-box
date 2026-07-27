@@ -81,11 +81,17 @@ model Message {
   classificationStatus String @default("pending") @map("classification_status")
   classifiedAt DateTime? @map("classified_at") @db.Timestamptz
   tags        Json      @default("[]")
+  messageId   String?   @map("message_id")
+  inReplyTo   String?   @map("in_reply_to")
+  referencesHeader String? @map("references_header")
+  threadId    String?   @map("thread_id")
   account     Account   @relation(fields: [accountId], references: [id], onDelete: Cascade)
 
   @@id([accountId, mailbox, uid])
   @@index([accountId, mailbox, receivedAt(sort: Desc), uid(sort: Desc)], map: "idx_messages_received_at")
   @@index([accountId, mailbox, classificationStatus], map: "idx_messages_classification_status")
+  @@index([accountId, messageId], map: "idx_messages_message_id")
+  @@index([accountId, threadId, receivedAt], map: "idx_messages_thread_id")
   @@map("messages")
 }
 

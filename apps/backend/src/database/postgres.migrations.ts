@@ -145,4 +145,23 @@ export const postgresMigrations: PostgresMigration[] = [
       CHECK (jsonb_typeof(tags) = 'array');
     `,
   },
+  {
+    version: 7,
+    name: 'message conversation threading',
+    sql: `
+      ALTER TABLE messages
+      ADD COLUMN message_id TEXT,
+      ADD COLUMN in_reply_to TEXT,
+      ADD COLUMN references_header TEXT,
+      ADD COLUMN thread_id TEXT;
+
+      CREATE INDEX idx_messages_message_id
+      ON messages(account_id, message_id)
+      WHERE message_id IS NOT NULL;
+
+      CREATE INDEX idx_messages_thread_id
+      ON messages(account_id, thread_id, received_at ASC, uid ASC)
+      WHERE thread_id IS NOT NULL;
+    `,
+  },
 ];

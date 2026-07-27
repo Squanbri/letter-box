@@ -51,6 +51,10 @@ export interface MessageRecord {
   flags: string[];
   size: number;
   tags: string[];
+  messageId: string | null;
+  inReplyTo: string | null;
+  references: string[];
+  threadId: string | null;
   body: { text: string | null; html: string | null } | null;
 }
 

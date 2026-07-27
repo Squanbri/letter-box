@@ -6,11 +6,14 @@ import { EmptyState, LoadingState } from '../../../shared/ui/AsyncState';
 
 export function MessageViewer({
   message,
+  thread,
   mailboxes,
   loading,
+  threadLoading,
   pending,
   seenPending,
   flaggedPending,
+  onOpenThreadMessage,
   onReply,
   onForward,
   onSeen,
@@ -20,11 +23,14 @@ export function MessageViewer({
   onDelete,
 }: {
   message: Message | null;
+  thread: Message[];
   mailboxes: MailboxInfo[];
   loading: boolean;
+  threadLoading: boolean;
   pending: boolean;
   seenPending: boolean;
   flaggedPending: boolean;
+  onOpenThreadMessage: (message: Message) => void;
   onReply: (message: Message) => void;
   onForward: (message: Message) => void;
   onSeen: (message: Message, value: boolean) => void;
@@ -39,6 +45,7 @@ export function MessageViewer({
   );
   const trash = mailboxes.find((mailbox) => mailbox.specialUse === '\\Trash');
   const permanent = trash?.path === message.mailbox;
+  const threadItems = thread.length > 1 ? thread : [];
 
   return (
     <article className="message-view">
@@ -113,12 +120,57 @@ export function MessageViewer({
           </div>
         </Stack>
       </header>
+      {(threadLoading || threadItems.length > 0) && (
+        <section className="thread-panel" aria-label="Ветка диалога">
+          <header>
+            <span className="eyebrow">Ветка диалога</span>
+            <strong>
+              {threadLoading ? '…' : `${threadItems.length} писем`}
+            </strong>
+          </header>
+          {!threadLoading && (
+            <ol className="thread-list">
+              {threadItems.map((item) => {
+                const active = item.mailbox === message.mailbox && item.uid === message.uid;
+                return (
+                  <li key={`${item.mailbox}:${item.uid}`}>
+                    <button
+                      type="button"
+                      className={active ? 'thread-item active' : 'thread-item'}
+                      onClick={() => onOpenThreadMessage(item)}
+                    >
+                      <span className="thread-from">
+                        {item.from.name || item.from.address || 'Без отправителя'}
+                      </span>
+                      <span className="thread-meta">
+                        <time>{new Date(item.date).toLocaleString('ru-RU', {
+                          day: '2-digit',
+                          month: 'short',
+                          hour: '2-digit',
+                          minute: '2-digit',
+                        })}</time>
+                        {item.mailbox !== message.mailbox && (
+                          <small>{mailboxDisplayName(
+                            mailboxes.find((mailbox) => mailbox.path === item.mailbox)
+                            ?? { path: item.mailbox, name: item.mailbox, delimiter: '/', specialUse: null, totalCount: 0, unreadCount: 0 },
+                          )}</small>
+                        )}
+                      </span>
+                      <span className="thread-snippet">{item.subject || 'Без темы'}</span>
+                    </button>
+                  </li>
+                );
+              })}
+            </ol>
+          )}
+        </section>
+      )}
       <div className="message-body">
         {loading
           ? <LoadingState text="Загрузка письма…" />
           : message.body?.html
             ? <iframe title={message.subject || 'Письмо'} sandbox="allow-popups allow-popups-to-escape-sandbox" srcDoc={prepareEmailHtml(message.body.html)} />
-            : <pre>{message.body?.text || 'В письме нет текстового содержимого.'}</pre>}
+            : <pre>{message.body?.text || 'Пустое письмо'}</pre>}
       </div>
     </article>
   );
