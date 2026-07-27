@@ -20,7 +20,7 @@ export function OverviewPage({
   onReconnect: (account: AccountStatus) => void;
   onDelete: (account: AccountStatus) => void;
 }) {
-  const { openAccount } = useWorkspace();
+  const { openAccount, openUnified } = useWorkspace();
   const { preferences, setAccountSync } = usePreferences();
   const { syncingIds, syncAll } = useSync();
 
@@ -34,7 +34,10 @@ export function OverviewPage({
         </Group>
       </header>
       <div className="dashboard">
-        <StatsGrid accounts={accounts} />
+        <StatsGrid
+          accounts={accounts}
+          onOpenUnread={() => openUnified({ kind: 'unread' })}
+        />
         <DashboardCharts accounts={accounts} />
         <div className="dashboard-grid">
           <AccountList
@@ -46,7 +49,10 @@ export function OverviewPage({
             onDelete={onDelete}
             onAccountSync={setAccountSync}
           />
-          <aside className="dashboard-side"><SmartSummaryCard /><SyncSettingsCard /></aside>
+          <aside className="dashboard-side">
+            <SmartSummaryCard onOpenTag={(tag) => openUnified({ kind: 'tag', tag })} />
+            <SyncSettingsCard />
+          </aside>
         </div>
       </div>
     </section>

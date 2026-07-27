@@ -11,6 +11,7 @@ import { ImapService } from './mail/imap.service';
 import { MailController } from './mail/mail.controller';
 import { MailService } from './mail/mail.service';
 import { StatsController } from './mail/stats.controller';
+import { InboxController } from './mail/inbox.controller';
 import { SmtpService } from './mail/smtp.service';
 import { EventsGateway } from './events/events.gateway';
 import { PrismaAccountRepository } from './account/prisma-account.repository';
@@ -57,6 +58,7 @@ import { ClassificationService } from './ai/classification.service';
     AccountController,
     MailController,
     StatsController,
+    InboxController,
     AuthController,
   ],
   providers: [

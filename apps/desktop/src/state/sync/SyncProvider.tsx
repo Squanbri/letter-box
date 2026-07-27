@@ -33,6 +33,7 @@ export function SyncProvider({ children }: { children: ReactNode }) {
     await Promise.all([
       client.invalidateQueries({ queryKey: accountKeys.all }),
       client.invalidateQueries({ queryKey: ['mail', 'stats'] }),
+      client.invalidateQueries({ queryKey: ['mail', 'inbox'] }),
       client.invalidateQueries({ queryKey: mailKeys.mailboxes(accountId) }),
       mailbox
         ? client.invalidateQueries({ queryKey: ['mail', accountId, 'messages', mailbox] })

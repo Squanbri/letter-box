@@ -7,7 +7,11 @@ import { useAccountsQuery } from '../../../state/accounts/accounts';
 import { useAuth } from '../../../state/auth/AuthProvider';
 import { mailKeys } from '../../../state/mail/mail';
 
-export function SmartSummaryCard() {
+export function SmartSummaryCard({
+  onOpenTag,
+}: {
+  onOpenTag?: (tag: string) => void;
+}) {
   const { session } = useAuth();
   const { data: accounts = [] } = useAccountsQuery(Boolean(session));
   const queries = useQueries({
@@ -50,8 +54,15 @@ export function SmartSummaryCard() {
           <ul className="tag-summary">
             {ranked.slice(0, 6).map(({ tag, count }) => (
               <li key={tag}>
-                <span>{tagLabel(tag)}</span>
-                <strong>{count}</strong>
+                <button
+                  type="button"
+                  className="tag-summary-item"
+                  onClick={() => onOpenTag?.(tag)}
+                  disabled={!onOpenTag}
+                >
+                  <span>{tagLabel(tag)}</span>
+                  <strong>{count}</strong>
+                </button>
               </li>
             ))}
           </ul>

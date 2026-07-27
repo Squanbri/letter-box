@@ -6,6 +6,8 @@ import { EmptyState, LoadingState } from '../../../shared/ui/AsyncState';
 export function MessageList({
   messages,
   selectedUid,
+  selectedKey,
+  accountLabels,
   loading,
   fetchingMore,
   hasMore,
@@ -14,6 +16,8 @@ export function MessageList({
 }: {
   messages: Message[];
   selectedUid: number | null;
+  selectedKey?: string | null;
+  accountLabels?: Map<string, string>;
   loading: boolean;
   fetchingMore: boolean;
   hasMore: boolean;
@@ -35,30 +39,38 @@ export function MessageList({
         ? loading
           ? <LoadingState text="Загрузка писем…" />
           : <EmptyState text="Писем пока нет" />
-        : messages.map((message) => (
-          <button
-            key={`${message.mailbox}:${message.uid}`}
-            className={`message-row ${selectedUid === message.uid ? 'selected' : ''} ${isSeen(message) ? '' : 'unread'}`}
-            onClick={() => onOpen(message)}
-          >
-            <div className="message-heading">
-              <span className="message-sender">
-                {!isSeen(message) && <span className="unread-dot" aria-label="Непрочитанное письмо" />}
-                <strong>{message.from.name || message.from.address || 'Неизвестный отправитель'}</strong>
-              </span>
-              <time>{formatDate(message.date)}</time>
-            </div>
-            <span className="subject">{message.flags.includes('\\Flagged') ? '★ ' : ''}{message.subject || 'Без темы'}</span>
-            {(message.tags?.length ?? 0) > 0 && (
-              <div className="message-tags">
-                {message.tags.map((tag) => (
-                  <span key={tag} className="message-tag">{tagLabel(tag)}</span>
-                ))}
+        : messages.map((message) => {
+          const key = `${message.accountId}:${message.mailbox}:${message.uid}`;
+          const selected = selectedKey
+            ? selectedKey === key
+            : selectedUid === message.uid;
+          const accountLabel = accountLabels?.get(message.accountId);
+          return (
+            <button
+              key={key}
+              className={`message-row ${selected ? 'selected' : ''} ${isSeen(message) ? '' : 'unread'}`}
+              onClick={() => onOpen(message)}
+            >
+              <div className="message-heading">
+                <span className="message-sender">
+                  {!isSeen(message) && <span className="unread-dot" aria-label="Непрочитанное письмо" />}
+                  <strong>{message.from.name || message.from.address || 'Неизвестный отправитель'}</strong>
+                </span>
+                <time>{formatDate(message.date)}</time>
               </div>
-            )}
-            <span className="meta">{formatSize(message.size)}</span>
-          </button>
-        ))}
+              <span className="subject">{message.flags.includes('\\Flagged') ? '★ ' : ''}{message.subject || 'Без темы'}</span>
+              {(accountLabel || (message.tags?.length ?? 0) > 0) && (
+                <div className="message-tags">
+                  {accountLabel && <span className="message-account">{accountLabel}</span>}
+                  {message.tags.map((tag) => (
+                    <span key={tag} className="message-tag">{tagLabel(tag)}</span>
+                  ))}
+                </div>
+              )}
+              <span className="meta">{formatSize(message.size)}</span>
+            </button>
+          );
+        })}
       {fetchingMore && <div className="list-loader"><Loader size="xs" />Загрузка старых писем…</div>}
     </section>
   );

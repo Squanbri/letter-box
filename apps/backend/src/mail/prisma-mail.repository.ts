@@ -105,6 +105,53 @@ export class PrismaMailRepository {
     return rows.map((row) => this.normalizeMessage(row));
   }
 
+  async listInbox(
+    accountIds: string[],
+    options: {
+      mailbox: string;
+      limit: number;
+      offset: number;
+      unreadOnly?: boolean;
+      tag?: string;
+    },
+  ): Promise<MessageRow[]> {
+    if (accountIds.length === 0) return [];
+    // Merge per-account newest pages, then sort globally.
+    // A single SQL LIMIT across account_id IN (...) can return one mailbox's
+    // slice first depending on the plan/index; this keeps chronology correct.
+    const window = options.offset + options.limit;
+    const batches = await Promise.all(accountIds.map((accountId) => (
+      this.database.client.message.findMany({
+        where: {
+          accountId,
+          mailbox: options.mailbox,
+          ...(options.tag
+            ? { tags: { array_contains: [options.tag] } }
+            : {}),
+          ...(options.unreadOnly
+            ? {
+              NOT: {
+                flags: {
+                  array_contains: '\\Seen',
+                },
+              },
+            }
+            : {}),
+        },
+        orderBy: [{ receivedAt: 'desc' }, { uid: 'desc' }],
+        take: window,
+      })
+    )));
+    return batches
+      .flat()
+      .sort((left, right) => {
+        const byDate = right.receivedAt.getTime() - left.receivedAt.getTime();
+        return byDate !== 0 ? byDate : Number(right.uid) - Number(left.uid);
+      })
+      .slice(options.offset, options.offset + options.limit)
+      .map((row) => this.normalizeMessage(row));
+  }
+
   async tagCounts(
     accountId: string,
     mailbox: string,

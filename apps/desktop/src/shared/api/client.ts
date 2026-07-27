@@ -133,6 +133,21 @@ export const api = {
     request<DashboardStats>(
       `/stats?days=${days}&mailbox=${encodeURIComponent(mailbox)}`,
     ),
+  inbox: (options: {
+    mailbox?: string;
+    unread?: boolean;
+    tag?: string;
+    offset?: number;
+    limit?: number;
+  } = {}) => {
+    const params = new URLSearchParams();
+    params.set('mailbox', options.mailbox ?? 'INBOX');
+    params.set('offset', String(options.offset ?? 0));
+    params.set('limit', String(options.limit ?? 50));
+    if (options.unread) params.set('unread', 'true');
+    if (options.tag) params.set('tag', options.tag);
+    return request<MessageRecord[]>(`/inbox?${params}`);
+  },
   addAccount: (input: AccountInput) => request<AccountStatus>('/accounts', json('POST', input)),
   reconnectAccount: (id: string, input: AccountInput) =>
     request<AccountStatus>(accountPath(id), json('PUT', input)),
