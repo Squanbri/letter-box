@@ -13,6 +13,8 @@ const PAGE_SIZE = 50;
 export const mailKeys = {
   all: ['mail'] as const,
   stats: (days = 30, mailbox = 'INBOX') => ['mail', 'stats', days, mailbox] as const,
+  inbox: (filter: { unread?: boolean; tag?: string | null; mailbox?: string }) =>
+    ['mail', 'inbox', 'v2', filter.mailbox ?? 'INBOX', filter.unread ? 'unread' : 'all', filter.tag ?? 'all'] as const,
   mailboxes: (accountId: string) => ['mail', accountId, 'mailboxes'] as const,
   messages: (accountId: string, mailbox: string, tag?: string | null) =>
     ['mail', accountId, 'messages', mailbox, tag ?? 'all'] as const,
@@ -85,6 +87,27 @@ export function useDashboardStatsQuery(days = 30, enabled = true) {
   });
 }
 
+export function useInboxQuery(filter: {
+  unread?: boolean;
+  tag?: string | null;
+  mailbox?: string;
+}, enabled = true) {
+  return useInfiniteQuery({
+    queryKey: mailKeys.inbox(filter),
+    initialPageParam: 0,
+    queryFn: ({ pageParam }) => api.inbox({
+      mailbox: filter.mailbox ?? 'INBOX',
+      unread: filter.unread,
+      tag: filter.tag ?? undefined,
+      offset: pageParam,
+      limit: PAGE_SIZE,
+    }),
+    getNextPageParam: (lastPage, pages) =>
+      lastPage.length === PAGE_SIZE ? pages.flat().length : undefined,
+    enabled,
+  });
+}
+
 export function useMessageQuery(
   accountId: string,
   mailbox: string,
@@ -147,6 +170,7 @@ export function useMessageActions(accountId: string) {
     client.invalidateQueries({ queryKey: ['mail', accountId, 'messages', mailbox] }),
     client.invalidateQueries({ queryKey: mailKeys.tags(accountId, mailbox) }),
     client.invalidateQueries({ queryKey: mailKeys.mailboxes(accountId) }),
+    client.invalidateQueries({ queryKey: ['mail', 'inbox'] }),
     client.invalidateQueries({ queryKey: accountKeys.all }),
   ]);
 

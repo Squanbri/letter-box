@@ -49,6 +49,7 @@ function repositoryMock(
     knownUids: async () => [],
     applyChanges: async () => 0,
     listMessages: async () => [],
+    listInbox: async () => [],
     listMailboxes: async () => [],
     replaceMailboxes: async () => undefined,
     saveMessages: async () => undefined,

@@ -43,6 +43,16 @@ export interface MailRepositoryContract {
     offset: number,
     tag?: string,
   ): Promise<MessageRow[]>;
+  listInbox(
+    accountIds: string[],
+    options: {
+      mailbox: string;
+      limit: number;
+      offset: number;
+      unreadOnly?: boolean;
+      tag?: string;
+    },
+  ): Promise<MessageRow[]>;
   listMailboxes(accountId: string): Promise<MailboxRecord[]>;
   replaceMailboxes(accountId: string, mailboxes: MailboxRecord[]): Promise<void>;
   saveMessages(

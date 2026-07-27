@@ -123,6 +123,27 @@ export class MailService {
     return rows.map((row) => this.mapRow(row, false));
   }
 
+  async listInbox(
+    userId: string,
+    options: {
+      mailbox?: string;
+      limit?: number;
+      offset?: number;
+      unreadOnly?: boolean;
+      tag?: string;
+    } = {},
+  ): Promise<MessageRecord[]> {
+    const accountIds = (await this.accounts.list(userId)).map(({ id }) => id);
+    const rows = await this.repository.listInbox(accountIds, {
+      mailbox: options.mailbox ?? 'INBOX',
+      limit: Math.min(Math.max(options.limit ?? 50, 1), 100),
+      offset: Math.max(options.offset ?? 0, 0),
+      unreadOnly: options.unreadOnly,
+      tag: options.tag?.trim() || undefined,
+    });
+    return rows.map((row) => this.mapRow(row, false));
+  }
+
   async tagCounts(
     accountId: string,
     mailbox = 'INBOX',
