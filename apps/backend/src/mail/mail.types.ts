@@ -18,10 +18,19 @@ export interface MessageFlags {
   flags: string[];
 }
 
+export type ClassificationStatus = 'pending' | 'processing' | 'completed' | 'failed';
+
+export interface ClassificationPreparation {
+  uid: number;
+  text: string | null;
+  status: 'pending' | 'failed';
+}
+
 export interface MailboxChanges {
   uidValidity: string;
   reset: boolean;
   serverUids: number[];
   messages: MessageMetadata[];
   flagUpdates: MessageFlags[];
+  classificationPreparations: ClassificationPreparation[];
 }

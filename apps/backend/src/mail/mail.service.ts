@@ -82,11 +82,14 @@ export class MailService {
     try {
       const uidValidity = await this.repository.mailboxState(accountId, mailbox);
       const knownUids = await this.repository.knownUids(accountId, mailbox);
+      const classificationCandidateUids =
+        await this.repository.classificationCandidateUids(accountId, mailbox);
       const result = await this.imap.fetchChanges(
         accountId,
         mailbox,
         knownUids,
         uidValidity,
+        classificationCandidateUids,
       );
 
       const removed = await this.repository.applyChanges(accountId, mailbox, result);

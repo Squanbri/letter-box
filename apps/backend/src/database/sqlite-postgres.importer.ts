@@ -152,9 +152,11 @@ async function upsertMessage(client: PoolClient, row: SqliteRow): Promise<void> 
   await client.query(`
     INSERT INTO messages (
       account_id, mailbox, uid, subject, sender_name, sender_address,
-      received_at, flags, size, body_text, body_html, body_loaded_at
+      received_at, flags, size, body_text, body_html, body_loaded_at,
+      classification_text, classification_status, classified_at
     ) VALUES (
-      $1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9, $10, $11, $12
+      $1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9, $10, $11, $12,
+      $13, $14, $15
     )
     ON CONFLICT(account_id, mailbox, uid) DO UPDATE SET
       subject = excluded.subject,
@@ -165,11 +167,17 @@ async function upsertMessage(client: PoolClient, row: SqliteRow): Promise<void> 
       size = excluded.size,
       body_text = excluded.body_text,
       body_html = excluded.body_html,
-      body_loaded_at = excluded.body_loaded_at
+      body_loaded_at = excluded.body_loaded_at,
+      classification_text = excluded.classification_text,
+      classification_status = excluded.classification_status,
+      classified_at = excluded.classified_at
   `, [
     row.account_id, row.mailbox, row.uid, row.subject, row.sender_name,
     row.sender_address, row.received_at, normalizeFlags(row.flags), row.size,
     row.body_text, row.body_html, row.body_loaded_at,
+    row.classification_text,
+    row.classification_status ?? 'pending',
+    row.classified_at,
   ]);
 }
 

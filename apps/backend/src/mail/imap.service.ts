@@ -8,6 +8,7 @@ import { simpleParser } from 'mailparser';
 import {
   MailboxChanges,
   MailboxRecord,
+  ClassificationPreparation,
   MessageFlags,
   MessageMetadata,
 } from './mail.types';
@@ -44,6 +45,7 @@ export class ImapService {
     mailbox: string,
     knownUids: number[],
     expectedUidValidity?: string,
+    classificationCandidateUids: number[] = [],
     initialLimit = 50,
   ): Promise<MailboxChanges> {
     return this.withMailbox(accountId, mailbox, async (client) => {
@@ -84,7 +86,22 @@ export class ImapService {
           });
         }
       }
-      return { uidValidity, reset, serverUids, messages, flagUpdates };
+      const classificationUids = [...new Set([
+        ...(reset ? [] : classificationCandidateUids),
+        ...newUids,
+      ])].filter((uid) => serverUids.includes(uid));
+      const classificationPreparations = await this.fetchClassificationPreparations(
+        client,
+        classificationUids,
+      );
+      return {
+        uidValidity,
+        reset,
+        serverUids,
+        messages,
+        flagUpdates,
+        classificationPreparations,
+      };
     });
   }
 
@@ -191,6 +208,35 @@ export class ImapService {
         lock.release();
       }
     });
+  }
+
+  private async fetchClassificationPreparations(
+    client: ImapFlow,
+    uids: number[],
+  ): Promise<ClassificationPreparation[]> {
+    if (uids.length === 0) return [];
+    const preparations: ClassificationPreparation[] = [];
+    for await (const message of client.fetch(
+      uids,
+      { uid: true, source: true },
+      { uid: true },
+    )) {
+      if (!message.source) {
+        preparations.push({ uid: message.uid, text: null, status: 'failed' });
+        continue;
+      }
+      try {
+        const text = await parseClassificationSource(message.source);
+        preparations.push({
+          uid: message.uid,
+          text: text || null,
+          status: text ? 'pending' : 'failed',
+        });
+      } catch {
+        preparations.push({ uid: message.uid, text: null, status: 'failed' });
+      }
+    }
+    return preparations;
   }
 
   private async withClient<T>(
@@ -338,4 +384,29 @@ export function selectMetadataUids(
   }
   const highestKnownUid = knownUids.reduce((highest, uid) => Math.max(highest, uid), 0);
   return serverUids.filter((uid) => uid > highestKnownUid).slice(0, limit);
+}
+
+export function prepareClassificationText(text: string, limit = 1_500): string {
+  const cleaned = text
+    .replace(/\u0000/g, '')
+    .replace(/\s+/gu, ' ')
+    .trim();
+  return Array.from(cleaned).slice(0, limit).join('');
+}
+
+export async function parseClassificationSource(
+  source: Buffer,
+): Promise<string> {
+  const parsed = await simpleParser(source);
+  return prepareClassificationText(
+    parsed.text
+    || (typeof parsed.html === 'string' ? stripHtml(parsed.html) : ''),
+  );
+}
+
+function stripHtml(html: string): string {
+  return html
+    .replace(/<style\b[^>]*>[\s\S]*?<\/style>/giu, ' ')
+    .replace(/<script\b[^>]*>[\s\S]*?<\/script>/giu, ' ')
+    .replace(/<[^>]+>/gu, ' ');
 }

@@ -116,4 +116,21 @@ export const postgresMigrations: PostgresMigration[] = [
       CHECK (provider IN ('mailru', 'yandex', 'gmail'));
     `,
   },
+  {
+    version: 5,
+    name: 'prepare messages for local classification',
+    sql: `
+      ALTER TABLE messages
+      ADD COLUMN classification_text TEXT,
+      ADD COLUMN classification_status TEXT NOT NULL DEFAULT 'pending',
+      ADD COLUMN classified_at TIMESTAMPTZ;
+
+      ALTER TABLE messages
+      ADD CONSTRAINT messages_classification_status_check
+      CHECK (classification_status IN ('pending', 'processing', 'completed', 'failed'));
+
+      CREATE INDEX idx_messages_classification_status
+      ON messages(account_id, mailbox, classification_status);
+    `,
+  },
 ];

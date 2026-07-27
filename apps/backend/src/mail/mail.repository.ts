@@ -1,6 +1,11 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { DatabaseService } from '../database/database.service';
-import type { MailboxChanges, MessageMetadata } from './mail.types';
+import type {
+  ClassificationPreparation,
+  ClassificationStatus,
+  MailboxChanges,
+  MessageMetadata,
+} from './mail.types';
 import type { MailboxRecord } from '@letter-box/contracts';
 
 export interface MessageRow {
@@ -16,6 +21,9 @@ export interface MessageRow {
   body_text: string | null;
   body_html: string | null;
   body_loaded_at: string | null;
+  classification_text: string | null;
+  classification_status: ClassificationStatus;
+  classified_at: string | null;
 }
 
 @Injectable()
@@ -62,6 +70,11 @@ export class MailRepository {
       for (const update of result.flagUpdates) {
         updateFlags.run(JSON.stringify(update.flags), accountId, mailbox, update.uid);
       }
+      this.saveClassificationPreparationsInTransaction(
+        accountId,
+        mailbox,
+        result.classificationPreparations ?? [],
+      );
       const serverUids = new Set(result.serverUids);
       const localUids = (db.prepare(
         'SELECT uid FROM messages WHERE account_id = ? AND mailbox = ?',
@@ -170,6 +183,30 @@ export class MailRepository {
     ).get(accountId, mailbox, uid) as MessageRow | undefined;
   }
 
+  async classificationCandidateUids(
+    accountId: string,
+    mailbox: string,
+  ): Promise<number[]> {
+    const rows = this.database.db.prepare(`
+      SELECT uid, flags FROM messages
+      WHERE account_id = ? AND mailbox = ? AND classification_text IS NULL
+      ORDER BY uid
+    `).all(accountId, mailbox) as Array<{ uid: number; flags: string }>;
+    return rows
+      .filter(({ flags }) => !(JSON.parse(flags) as string[]).includes('\\Seen'))
+      .map(({ uid }) => uid);
+  }
+
+  async saveClassificationPreparations(
+    accountId: string,
+    mailbox: string,
+    preparations: ClassificationPreparation[],
+  ): Promise<void> {
+    this.database.db.transaction(() => {
+      this.saveClassificationPreparationsInTransaction(accountId, mailbox, preparations);
+    })();
+  }
+
   async saveBody(
     accountId: string,
     mailbox: string,
@@ -231,5 +268,27 @@ export class MailRepository {
 
   private messageParams(accountId: string, mailbox: string, message: MessageMetadata) {
     return { ...message, accountId, mailbox, flags: JSON.stringify(message.flags) };
+  }
+
+  private saveClassificationPreparationsInTransaction(
+    accountId: string,
+    mailbox: string,
+    preparations: ClassificationPreparation[],
+  ): void {
+    const update = this.database.db.prepare(`
+      UPDATE messages
+      SET classification_text = ?, classification_status = ?
+      WHERE account_id = ? AND mailbox = ? AND uid = ?
+        AND classification_text IS NULL
+    `);
+    for (const preparation of preparations) {
+      update.run(
+        preparation.text,
+        preparation.status,
+        accountId,
+        mailbox,
+        preparation.uid,
+      );
+    }
   }
 }

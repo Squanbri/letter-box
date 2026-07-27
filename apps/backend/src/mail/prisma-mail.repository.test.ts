@@ -43,12 +43,25 @@ test('isolates composite message keys and applies changes in PostgreSQL', {
       serverUids: [43],
       messages: [message(43, ['\\Flagged'])],
       flagUpdates: [],
+      classificationPreparations: [{
+        uid: 43,
+        text: 'Prepared message',
+        status: 'pending',
+      }],
     });
     assert.equal(removed, 1);
     assert.deepEqual(await mail.knownUids(first.id, 'INBOX'), [43]);
     assert.deepEqual(
       JSON.parse((await mail.findMessage(first.id, 'INBOX', 43))!.flags),
       ['\\Flagged'],
+    );
+    assert.equal(
+      (await mail.findMessage(first.id, 'INBOX', 43))?.classification_text,
+      'Prepared message',
+    );
+    assert.equal(
+      (await mail.findMessage(first.id, 'INBOX', 43))?.classification_status,
+      'pending',
     );
     assert.equal((await accounts.find(null, first.id))?.unread_count, 1);
   } finally {

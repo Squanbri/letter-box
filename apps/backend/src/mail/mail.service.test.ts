@@ -206,6 +206,100 @@ test('applies incremental additions, flag updates, and removals', async () => {
   }
 });
 
+test('prepares unread stored and new messages once without caching full bodies', async () => {
+  const context = await fixture();
+  try {
+    await context.accounts.persist(account('first', 'first@example.com'));
+    const insert = context.database.db.prepare(`
+      INSERT INTO messages (
+        account_id, mailbox, uid, received_at, flags, size
+      ) VALUES ('first', 'INBOX', ?, ?, ?, 1)
+    `);
+    insert.run(1, new Date(1_000).toISOString(), '[]');
+    insert.run(2, new Date(2_000).toISOString(), '["\\\\Seen"]');
+
+    const candidateCalls: number[][] = [];
+    let syncCount = 0;
+    const imap = {
+      fetchChanges: async (
+        _accountId: string,
+        _mailbox: string,
+        _knownUids: number[],
+        _uidValidity: string | undefined,
+        classificationCandidateUids: number[],
+      ) => {
+        candidateCalls.push(classificationCandidateUids);
+        syncCount += 1;
+        return syncCount === 1
+          ? {
+            uidValidity: '1',
+            reset: false,
+            serverUids: [1, 2, 3],
+            messages: [metadata(3, ['\\Seen'])],
+            flagUpdates: [],
+            classificationPreparations: [
+              { uid: 1, text: 'Existing unread', status: 'pending' as const },
+              { uid: 3, text: 'New message', status: 'pending' as const },
+            ],
+          }
+          : {
+            uidValidity: '1',
+            reset: false,
+            serverUids: [1, 2, 3],
+            messages: [],
+            flagUpdates: [],
+            classificationPreparations: [],
+          };
+      },
+    } as unknown as ImapService;
+    const mail = new MailService(
+      new MailRepository(context.database),
+      imap,
+      context.accounts,
+    );
+
+    await mail.syncMailbox('first');
+    await mail.syncMailbox('first');
+
+    assert.deepEqual(candidateCalls, [[1], []]);
+    assert.deepEqual(
+      context.database.db.prepare(`
+        SELECT uid, classification_text, classification_status,
+          body_text, body_html, body_loaded_at
+        FROM messages ORDER BY uid
+      `).all(),
+      [
+        {
+          uid: 1,
+          classification_text: 'Existing unread',
+          classification_status: 'pending',
+          body_text: null,
+          body_html: null,
+          body_loaded_at: null,
+        },
+        {
+          uid: 2,
+          classification_text: null,
+          classification_status: 'pending',
+          body_text: null,
+          body_html: null,
+          body_loaded_at: null,
+        },
+        {
+          uid: 3,
+          classification_text: 'New message',
+          classification_status: 'pending',
+          body_text: null,
+          body_html: null,
+          body_loaded_at: null,
+        },
+      ],
+    );
+  } finally {
+    context.close();
+  }
+});
+
 test('resets an interrupted synchronization status after restart', async () => {
   const context = await fixture();
   try {

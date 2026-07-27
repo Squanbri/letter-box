@@ -47,6 +47,13 @@ test('migrates the legacy single-account mail schema to composite keys', () => {
       mailboxColumns.filter((column) => column.pk > 0).map((column) => column.name),
       ['account_id', 'mailbox'],
     );
+    assert.deepEqual(
+      messageColumns
+        .filter((column) => column.name.startsWith('classification_'))
+        .map((column) => column.name),
+      ['classification_text', 'classification_status'],
+    );
+    assert.ok(messageColumns.some((column) => column.name === 'classified_at'));
   } finally {
     database.onModuleDestroy();
     rmSync(directory, { recursive: true, force: true });
