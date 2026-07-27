@@ -5,6 +5,7 @@ import { AccountService } from '../account/account.service';
 import type { MailRepositoryContract } from '../database/repository.contracts';
 import { ImapService, selectMetadataUids } from './imap.service';
 import { MailService } from './mail.service';
+import { SmtpService } from './smtp.service';
 import type { MailboxChanges, MailboxRecord, MessageRow } from './mail.types';
 
 function accountsMock(status: AccountStatus['status'] = 'connected'): AccountService {
@@ -26,6 +27,18 @@ function accountsMock(status: AccountStatus['status'] = 'connected'): AccountSer
       state.status = 'connected';
     },
   } as unknown as AccountService;
+}
+
+function smtpMock(overrides: Partial<SmtpService> = {}): SmtpService {
+  return {
+    send: async () => ({
+      messageId: '<test@letter-box>',
+      accepted: ['to@example.com'],
+      rejected: [],
+      raw: Buffer.from('raw'),
+    }),
+    ...overrides,
+  } as unknown as SmtpService;
 }
 
 function repositoryMock(
@@ -98,7 +111,7 @@ test('deduplicates concurrent synchronization for the same account', async () =>
       return emptyChanges();
     },
   } as unknown as ImapService;
-  const mail = new MailService(repositoryMock(), imap, accounts);
+  const mail = new MailService(repositoryMock(), imap, smtpMock(), accounts);
 
   const first = mail.syncMailbox('first');
   const second = mail.syncMailbox('first');
@@ -123,7 +136,7 @@ test('synchronizes different mailboxes independently for one account', async () 
       return emptyChanges();
     },
   } as unknown as ImapService;
-  const mail = new MailService(repositoryMock(), imap, accountsMock());
+  const mail = new MailService(repositoryMock(), imap, smtpMock(), accountsMock());
 
   const inbox = mail.syncMailbox('first', 'INBOX');
   const archive = mail.syncMailbox('first', 'Archive');
@@ -189,7 +202,7 @@ test('passes classification candidates and applies incremental sync results', as
       return snapshots.shift()!;
     },
   } as unknown as ImapService;
-  const mail = new MailService(repository, imap, accountsMock());
+  const mail = new MailService(repository, imap, smtpMock(), accountsMock());
 
   assert.deepEqual(
     await mail.syncMailbox('first'),
@@ -254,7 +267,7 @@ test('flags, archives, and deletes only the targeted message', async () => {
       commands.push(`delete:${mailbox}:${uid}`);
     },
   } as unknown as ImapService;
-  const mail = new MailService(repository, imap, accountsMock());
+  const mail = new MailService(repository, imap, smtpMock(), accountsMock());
 
   assert.deepEqual((await mail.setFlagged('first', 'INBOX', 1, true)).flags, ['\\Flagged']);
   await mail.archiveMessage('first', 'INBOX', 1);
@@ -297,7 +310,7 @@ test('caches the mailbox catalog from IMAP replacements', async () => {
   const imap = {
     fetchMailboxes: async () => snapshots.shift()!,
   } as unknown as ImapService;
-  const mail = new MailService(repository, imap, accountsMock());
+  const mail = new MailService(repository, imap, smtpMock(), accountsMock());
 
   assert.equal((await mail.syncMailboxes('first')).length, 2);
   assert.deepEqual(await mail.syncMailboxes('first'), [{
@@ -308,4 +321,64 @@ test('caches the mailbox catalog from IMAP replacements', async () => {
     totalCount: 21,
     unreadCount: 4,
   }]);
+});
+
+test('sends a message over SMTP and appends a copy to Sent', async () => {
+  const calls: string[] = [];
+  const repository = repositoryMock({
+    specialMailbox: async (_accountId, specialUse) =>
+      specialUse === '\\Sent' ? 'Sent' : undefined,
+  });
+  const imap = {
+    appendMessage: async (
+      accountId: string,
+      mailbox: string,
+      source: Buffer,
+      flags: string[],
+    ) => {
+      calls.push(`append:${accountId}:${mailbox}:${source.toString()}:${flags.join(',')}`);
+    },
+  } as unknown as ImapService;
+  const smtp = smtpMock({
+    send: async (_accountId, input) => {
+      calls.push(`smtp:${input.to.join(',')}:${input.subject}`);
+      return {
+        messageId: '<sent@letter-box>',
+        accepted: input.to,
+        rejected: [],
+        raw: Buffer.from('MIME'),
+      };
+    },
+  });
+  const mail = new MailService(repository, imap, smtp, accountsMock());
+
+  const result = await mail.sendMessage('first', {
+    to: ['to@example.com'],
+    subject: 'Hello',
+    text: 'Body',
+  });
+
+  assert.deepEqual(result, {
+    messageId: '<sent@letter-box>',
+    accepted: ['to@example.com'],
+    rejected: [],
+    sentMailbox: 'Sent',
+  });
+  assert.deepEqual(calls, [
+    'smtp:to@example.com:Hello',
+    'append:first:Sent:MIME:\\Seen',
+  ]);
+});
+
+test('rejects send without recipients', async () => {
+  const mail = new MailService(
+    repositoryMock(),
+    {} as ImapService,
+    smtpMock(),
+    accountsMock(),
+  );
+  await assert.rejects(
+    () => mail.sendMessage('first', { to: [], subject: 'Hi', text: 'Body' }),
+    /получателя/,
+  );
 });

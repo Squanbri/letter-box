@@ -11,6 +11,8 @@ export function MessageViewer({
   pending,
   seenPending,
   flaggedPending,
+  onReply,
+  onForward,
   onSeen,
   onFlagged,
   onMove,
@@ -23,6 +25,8 @@ export function MessageViewer({
   pending: boolean;
   seenPending: boolean;
   flaggedPending: boolean;
+  onReply: (message: Message) => void;
+  onForward: (message: Message) => void;
   onSeen: (message: Message, value: boolean) => void;
   onFlagged: (message: Message, value: boolean) => void;
   onMove: (message: Message, destination: string) => void;
@@ -49,6 +53,24 @@ export function MessageViewer({
             </Group>
           )}
           <Group gap="xs">
+            <Button
+              size="xs"
+              variant="light"
+              color="gray"
+              disabled={loading}
+              onClick={() => onReply(message)}
+            >
+              Ответить
+            </Button>
+            <Button
+              size="xs"
+              variant="light"
+              color="gray"
+              disabled={loading}
+              onClick={() => onForward(message)}
+            >
+              Переслать
+            </Button>
             <Button
               size="xs"
               variant="light"

@@ -17,7 +17,7 @@ import { MailService, SyncResult } from './mail.service';
 import { MailboxRecord, MessageRecord } from './mail.types';
 import { AccountOwnershipGuard } from '../auth/account-ownership.guard';
 import { SyncQueueService } from '../sync/sync-queue.service';
-import type { SyncStatus } from '@letter-box/contracts';
+import type { SendMessageInput, SendMessageResult, SyncStatus } from '@letter-box/contracts';
 
 @UseGuards(AccountOwnershipGuard)
 @Controller('accounts/:accountId')
@@ -64,6 +64,14 @@ export class MailController {
     @Query('offset', new DefaultValuePipe(0), ParseIntPipe) offset = 0,
   ): Promise<MessageRecord[]> {
     return this.mail.listMessages(accountId, mailbox, limit, offset, tag?.trim() || undefined);
+  }
+
+  @Post('messages/send')
+  send(
+    @Param('accountId') accountId: string,
+    @Body() input: SendMessageInput,
+  ): Promise<SendMessageResult> {
+    return this.mail.sendMessage(accountId, input);
   }
 
   @Get('mail/tags')

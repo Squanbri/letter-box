@@ -195,6 +195,20 @@ export class ImapService {
     });
   }
 
+  async appendMessage(
+    accountId: string,
+    mailbox: string,
+    source: Buffer | string,
+    flags: string[] = ['\\Seen'],
+  ): Promise<void> {
+    await this.withClient(accountId, async (client) => {
+      const result = await client.append(mailbox, source, flags);
+      if (!result) {
+        throw new BadGatewayException(`Не удалось сохранить письмо в папку ${mailbox}`);
+      }
+    });
+  }
+
   private async withMailbox<T>(
     accountId: string,
     mailbox: string,

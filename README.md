@@ -10,7 +10,8 @@ Electron + React ──REST / Socket.IO──> NestJS server
                                           ├──> PostgreSQL
                                           ├──> Redis / BullMQ
                                           ├──> sync worker
-                                          └──> IMAP (imapflow)
+                                          ├──> IMAP (imapflow)
+                                          └──> SMTP (nodemailer)
 ```
 
 Electron не импортирует, не запускает и не упаковывает NestJS. Сервер является
@@ -87,7 +88,9 @@ npm run dev
 аккаунта. Старые письма загружаются страницами по 50 при прокрутке списка.
 Письма можно отмечать важными, архивировать, перемещать между папками и
 удалять. Обычное удаление перемещает письмо в системную корзину, а удаление
-из самой корзины выполняется окончательно.
+из самой корзины выполняется окончательно. Новые письма отправляются через
+SMTP того же провайдера; после отправки копия сохраняется в «Отправленные».
+Из просмотра письма доступны ответ и пересылка.
 
 Сервер также можно запустить независимо:
 
@@ -161,6 +164,7 @@ Backend больше не входит в Electron-приложение. Сер�
 | `POST` | `/accounts/:accountId/mail/sync?mailbox=INBOX` | Синхронизация выбранной папки |
 | `GET` | `/accounts/:accountId/mail/sync` | Активные и ожидающие задания синхронизации |
 | `GET` | `/accounts/:accountId/messages?mailbox=INBOX` | Локальный список писем |
+| `POST` | `/accounts/:accountId/messages/send` | Отправка письма через SMTP |
 | `GET` | `/accounts/:accountId/mail/tags?mailbox=INBOX` | Счётчики AI-тегов |
 | `GET` | `/accounts/:accountId/messages/:uid?mailbox=INBOX` | Письмо с ленивой загрузкой тела |
 | `PATCH` | `/accounts/:accountId/messages/:uid/seen?mailbox=INBOX` | Изменение состояния прочитано/не прочитано |
