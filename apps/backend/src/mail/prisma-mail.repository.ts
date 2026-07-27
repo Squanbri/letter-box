@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import type { MailboxRecord } from '@letter-box/contracts';
-import type { Prisma } from '../generated/prisma/client';
+import { Prisma } from '../generated/prisma/client';
 import { PrismaDatabaseService } from '../database/prisma-database.service';
 import type {
   ClassificationPreparation,
@@ -105,30 +105,55 @@ export class PrismaMailRepository {
     accountId: string,
     mailbox: string,
   ): Promise<Array<{ tag: string; count: number }>> {
-    const rows = await this.database.client.message.findMany({
-      where: {
-        accountId,
-        mailbox,
-        NOT: {
-          flags: {
-            array_contains: '\\Seen',
-          },
-        },
-      },
-      select: { tags: true },
-    });
-    const counts = new Map<string, number>();
-    for (const row of rows) {
-      const tags = Array.isArray(row.tags)
-        ? row.tags.map(String)
-        : [];
-      for (const tag of tags) {
-        counts.set(tag, (counts.get(tag) ?? 0) + 1);
-      }
-    }
-    return [...counts.entries()]
-      .map(([tag, count]) => ({ tag, count }))
-      .sort((left, right) => right.count - left.count || left.tag.localeCompare(right.tag));
+    return this.messagesByTag([accountId], mailbox, true);
+  }
+
+  async messagesByDay(
+    accountIds: string[],
+    mailbox: string,
+    since: Date,
+  ): Promise<Array<{ date: string; count: number }>> {
+    if (accountIds.length === 0) return [];
+    const rows = await this.database.client.$queryRaw<Array<{ date: Date; count: bigint }>>(
+      Prisma.sql`
+        SELECT date_trunc('day', received_at)::date AS date, COUNT(*)::bigint AS count
+        FROM messages
+        WHERE account_id IN (${Prisma.join(accountIds)})
+          AND mailbox = ${mailbox}
+          AND received_at >= ${since}
+        GROUP BY 1
+        ORDER BY 1
+      `,
+    );
+    return rows.map((row) => ({
+      date: row.date instanceof Date
+        ? row.date.toISOString().slice(0, 10)
+        : String(row.date).slice(0, 10),
+      count: Number(row.count),
+    }));
+  }
+
+  async messagesByTag(
+    accountIds: string[],
+    mailbox: string,
+    unreadOnly = false,
+  ): Promise<Array<{ tag: string; count: number }>> {
+    if (accountIds.length === 0) return [];
+    const rows = await this.database.client.$queryRaw<Array<{ tag: string; count: bigint }>>(
+      Prisma.sql`
+        SELECT tag, COUNT(*)::bigint AS count
+        FROM messages
+        CROSS JOIN LATERAL jsonb_array_elements_text(tags::jsonb) AS tag
+        WHERE account_id IN (${Prisma.join(accountIds)})
+          AND mailbox = ${mailbox}
+          ${unreadOnly
+            ? Prisma.sql`AND NOT (flags::jsonb @> '["\\\\Seen"]'::jsonb)`
+            : Prisma.empty}
+        GROUP BY tag
+        ORDER BY count DESC, tag ASC
+      `,
+    );
+    return rows.map((row) => ({ tag: row.tag, count: Number(row.count) }));
   }
 
   async listMailboxes(accountId: string): Promise<MailboxRecord[]> {

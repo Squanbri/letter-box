@@ -91,6 +91,12 @@ export interface SyncStatus {
   mailboxes: string[];
 }
 
+export interface DashboardStats {
+  messagesByDay: Array<{ date: string; count: number }>;
+  messagesByTag: Array<{ tag: string; count: number }>;
+  unreadByTag: Array<{ tag: string; count: number }>;
+}
+
 export const MESSAGE_TAGS = [
   'spam',
   'promo',

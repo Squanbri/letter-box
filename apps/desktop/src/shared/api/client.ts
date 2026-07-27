@@ -3,6 +3,7 @@ import type {
   AccountStatus,
   AuthCredentials,
   AuthSession,
+  DashboardStats,
   MailboxRecord,
   MessageRecord,
   SendMessageInput,
@@ -17,6 +18,7 @@ export type {
   AccountInput,
   AccountStatus,
   AuthSession,
+  DashboardStats,
   MailboxRecord as MailboxInfo,
   MessageRecord as Message,
   SendMessageInput,
@@ -127,6 +129,10 @@ export const api = {
     json('POST', { level: 'error', message, stack }),
   ),
   accounts: () => request<AccountStatus[]>('/accounts'),
+  stats: (days = 30, mailbox = 'INBOX') =>
+    request<DashboardStats>(
+      `/stats?days=${days}&mailbox=${encodeURIComponent(mailbox)}`,
+    ),
   addAccount: (input: AccountInput) => request<AccountStatus>('/accounts', json('POST', input)),
   reconnectAccount: (id: string, input: AccountInput) =>
     request<AccountStatus>(accountPath(id), json('PUT', input)),

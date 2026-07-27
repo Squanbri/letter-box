@@ -8,6 +8,7 @@ import { AccountService } from '../account/account.service';
 import { ImapService } from './imap.service';
 import { MailboxRecord, MessageRecord, MessageRow } from './mail.types';
 import type {
+  DashboardStats,
   SendMessageInput,
   SendMessageResult,
   SyncResult,
@@ -22,6 +23,7 @@ import { SmtpService } from './smtp.service';
 export type { SyncResult } from '@letter-box/contracts';
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const MAX_STATS_DAYS = 90;
 
 @Injectable()
 export class MailService {
@@ -127,6 +129,26 @@ export class MailService {
   ): Promise<Array<{ tag: string; count: number }>> {
     await this.accounts.get(accountId);
     return this.repository.tagCounts(accountId, mailbox);
+  }
+
+  async dashboardStats(
+    userId: string,
+    days = 30,
+    mailbox = 'INBOX',
+  ): Promise<DashboardStats> {
+    const accountIds = (await this.accounts.list(userId)).map(({ id }) => id);
+    const windowDays = Math.min(Math.max(days, 1), MAX_STATS_DAYS);
+    const since = startOfUtcDay(addUtcDays(new Date(), 1 - windowDays));
+    const [rawByDay, messagesByTag, unreadByTag] = await Promise.all([
+      this.repository.messagesByDay(accountIds, mailbox, since),
+      this.repository.messagesByTag(accountIds, mailbox, false),
+      this.repository.messagesByTag(accountIds, mailbox, true),
+    ]);
+    return {
+      messagesByDay: fillDays(rawByDay, since, windowDays),
+      messagesByTag,
+      unreadByTag,
+    };
   }
 
   async listMailboxes(accountId: string): Promise<MailboxRecord[]> {
@@ -380,4 +402,26 @@ function optionalHeader(value: string | undefined): string | undefined {
   if (typeof value !== 'string') return undefined;
   const trimmed = value.trim();
   return trimmed || undefined;
+}
+
+function startOfUtcDay(date: Date): Date {
+  return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
+}
+
+function addUtcDays(date: Date, days: number): Date {
+  const next = new Date(date);
+  next.setUTCDate(next.getUTCDate() + days);
+  return next;
+}
+
+function fillDays(
+  rows: Array<{ date: string; count: number }>,
+  since: Date,
+  days: number,
+): Array<{ date: string; count: number }> {
+  const counts = new Map(rows.map((row) => [row.date, row.count]));
+  return Array.from({ length: days }, (_, index) => {
+    const date = addUtcDays(since, index).toISOString().slice(0, 10);
+    return { date, count: counts.get(date) ?? 0 };
+  });
 }

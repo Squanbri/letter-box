@@ -10,6 +10,7 @@ import { DiagnosticsController } from './diagnostics.controller';
 import { ImapService } from './mail/imap.service';
 import { MailController } from './mail/mail.controller';
 import { MailService } from './mail/mail.service';
+import { StatsController } from './mail/stats.controller';
 import { SmtpService } from './mail/smtp.service';
 import { EventsGateway } from './events/events.gateway';
 import { PrismaAccountRepository } from './account/prisma-account.repository';
@@ -55,6 +56,7 @@ import { ClassificationService } from './ai/classification.service';
     DiagnosticsController,
     AccountController,
     MailController,
+    StatsController,
     AuthController,
   ],
   providers: [
