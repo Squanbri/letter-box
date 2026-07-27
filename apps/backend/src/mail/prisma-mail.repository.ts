@@ -8,7 +8,7 @@ import type {
   MailboxChanges,
   MessageMetadata,
 } from './mail.types';
-import type { MessageRow } from './mail.repository';
+import type { MessageRow } from './mail.types';
 
 @Injectable()
 export class PrismaMailRepository {
@@ -84,14 +84,51 @@ export class PrismaMailRepository {
     mailbox: string,
     limit: number,
     offset: number,
+    tag?: string,
   ): Promise<MessageRow[]> {
     const rows = await this.database.client.message.findMany({
-      where: { accountId, mailbox },
+      where: {
+        accountId,
+        mailbox,
+        ...(tag
+          ? { tags: { array_contains: [tag] } }
+          : {}),
+      },
       orderBy: [{ receivedAt: 'desc' }, { uid: 'desc' }],
       take: limit,
       skip: offset,
     });
     return rows.map((row) => this.normalizeMessage(row));
+  }
+
+  async tagCounts(
+    accountId: string,
+    mailbox: string,
+  ): Promise<Array<{ tag: string; count: number }>> {
+    const rows = await this.database.client.message.findMany({
+      where: {
+        accountId,
+        mailbox,
+        NOT: {
+          flags: {
+            array_contains: '\\Seen',
+          },
+        },
+      },
+      select: { tags: true },
+    });
+    const counts = new Map<string, number>();
+    for (const row of rows) {
+      const tags = Array.isArray(row.tags)
+        ? row.tags.map(String)
+        : [];
+      for (const tag of tags) {
+        counts.set(tag, (counts.get(tag) ?? 0) + 1);
+      }
+    }
+    return [...counts.entries()]
+      .map(([tag, count]) => ({ tag, count }))
+      .sort((left, right) => right.count - left.count || left.tag.localeCompare(right.tag));
   }
 
   async listMailboxes(accountId: string): Promise<MailboxRecord[]> {
@@ -311,6 +348,7 @@ export class PrismaMailRepository {
     classificationText: string | null;
     classificationStatus: string;
     classifiedAt: Date | null;
+    tags: Prisma.JsonValue;
   }): MessageRow {
     return {
       account_id: row.accountId,
@@ -328,6 +366,7 @@ export class PrismaMailRepository {
       classification_text: row.classificationText,
       classification_status: row.classificationStatus as ClassificationStatus,
       classified_at: row.classifiedAt?.toISOString() ?? null,
+      tags: Array.isArray(row.tags) ? row.tags.map(String) : [],
     };
   }
 

@@ -12,7 +12,6 @@
     "server:up": "docker compose up -d --build server worker",
     "server:down": "docker compose down",
     "infra:down": "docker compose down",
-    "db:import:sqlite": "npm run db:import:sqlite -w @letter-box/server --",
     "db:generate": "npm run prisma:generate -w @letter-box/server",
     "db:studio": "npm run prisma:studio -w @letter-box/server",
     "build": "npm run build -w @letter-box/server && npm run build -w @letter-box/desktop",

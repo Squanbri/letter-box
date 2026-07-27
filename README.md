@@ -15,17 +15,13 @@ Electron + React ──REST / Socket.IO──> NestJS server
 
 Electron не импортирует, не запускает и не упаковывает NestJS. Сервер является
 единственным владельцем IMAP-соединений, credentials и почтовых данных. Общие
-DTO находятся в `@letter-box/contracts`. Redis координирует блокировки
-синхронизации и хранит очередь BullMQ. Отдельный worker владеет длительными
-IMAP-задачами, поэтому закрытие desktop или HTTP-соединения их не отменяет.
-PostgreSQL — обязательный и
-единственный источник серверных данных. SQLite используется только
-одноразовым инструментом импорта старой базы и не входит в production runtime.
-Схема PostgreSQL описана в `apps/backend/prisma/schema.prisma`. Prisma Client
-генерирует типизированные запросы. Аккаунты, пользователи, refresh-сессии,
-папки и письма работают через Prisma, включая составной ключ письма и
-транзакции синхронизации. Ручной `pg` остаётся только для bootstrap существующих
-SQL-миграций и одноразового SQLite-importer.
+DTO находятся в `@letter-box/contracts`. Redis координирует очередь BullMQ.
+Отдельный worker владеет длительными IMAP-задачами, поэтому закрытие desktop
+или HTTP-соединения их не отменяет. PostgreSQL — обязательный и единственный
+источник серверных данных. Схема PostgreSQL описана в
+`apps/backend/prisma/schema.prisma`. Prisma Client генерирует типизированные
+запросы. Аккаунты, пользователи, refresh-сессии, папки и письма работают через
+Prisma, включая составной ключ письма и транзакции синхронизации.
 
 REST API и Socket.IO защищены JWT. Каждый почтовый аккаунт принадлежит
 пользователю Letter Box, а account-oriented endpoints проверяют владельца до
@@ -36,7 +32,10 @@ REST API и Socket.IO защищены JWT. Каждый почтовый акк
 запуски получают только новые UID, обновляют флаги существующих писем и удаляют
 локальные записи, которых больше нет на сервере. В PostgreSQL сохраняются UID,
 тема, отправитель, дата, флаги и размер. Тело письма запрашивается с IMAP и
-сохраняется только при первом открытии письма.
+сохраняется только при первом открытии письма. Для непрочитанных писем sync
+дополнительно готовит короткий `classification_text`; sync worker периодически
+отправляет его в локальный Ollama (`qwen3:0.6b` по умолчанию, `keep_alive: 0`)
+и сохраняет AI-теги для фильтрации.
 
 ## Запуск
 
@@ -134,25 +133,6 @@ Backend больше не входит в Electron-приложение. Сер�
 шифруются AES-256-GCM;
 в production переменная `LETTER_BOX_ENCRYPTION_KEY` обязательна.
 
-## Перенос SQLite в PostgreSQL
-
-Остановите сервер, оставив PostgreSQL запущенным, и выполните:
-
-```bash
-DATABASE_URL=postgresql://letter_box:letter_box_dev@127.0.0.1:5432/letter_box \
-npm run db:import:sqlite -- ./data/letter-box.db
-```
-
-Команда переносит пользователей, аккаунты, UIDVALIDITY, папки и письма одной
-транзакцией.
-Повторный запуск безопасен: записи обновляются по первичным ключам без
-дублирования. Исходный SQLite-файл не изменяется и не удаляется.
-
-Зашифрованный `credentials.json` импортировать не нужно: сохраните его рядом с
-сервером и используйте прежние `CREDENTIALS_PATH` и
-`LETTER_BOX_ENCRYPTION_KEY`. После проверки PostgreSQL SQLite-файл стоит
-сохранить как резервную копию.
-
 Диагностический лог desktop main process:
 
 ```text
@@ -181,6 +161,7 @@ npm run db:import:sqlite -- ./data/letter-box.db
 | `POST` | `/accounts/:accountId/mail/sync?mailbox=INBOX` | Синхронизация выбранной папки |
 | `GET` | `/accounts/:accountId/mail/sync` | Активные и ожидающие задания синхронизации |
 | `GET` | `/accounts/:accountId/messages?mailbox=INBOX` | Локальный список писем |
+| `GET` | `/accounts/:accountId/mail/tags?mailbox=INBOX` | Счётчики AI-тегов |
 | `GET` | `/accounts/:accountId/messages/:uid?mailbox=INBOX` | Письмо с ленивой загрузкой тела |
 | `PATCH` | `/accounts/:accountId/messages/:uid/seen?mailbox=INBOX` | Изменение состояния прочитано/не прочитано |
 | `PATCH` | `/accounts/:accountId/messages/:uid/flagged?mailbox=INBOX` | Изменение флага «важное» |

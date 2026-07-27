@@ -34,3 +34,22 @@ export interface MailboxChanges {
   flagUpdates: MessageFlags[];
   classificationPreparations: ClassificationPreparation[];
 }
+
+export interface MessageRow {
+  account_id: string;
+  mailbox: string;
+  uid: number;
+  subject: string | null;
+  sender_name: string | null;
+  sender_address: string | null;
+  received_at: string;
+  flags: string;
+  size: number;
+  body_text: string | null;
+  body_html: string | null;
+  body_loaded_at: string | null;
+  classification_text: string | null;
+  classification_status: ClassificationStatus;
+  classified_at: string | null;
+  tags: string[];
+}

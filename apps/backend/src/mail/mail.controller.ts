@@ -59,10 +59,19 @@ export class MailController {
   list(
     @Param('accountId') accountId: string,
     @Query('mailbox') mailbox = 'INBOX',
+    @Query('tag') tag?: string,
     @Query('limit', new DefaultValuePipe(50), ParseIntPipe) limit = 50,
     @Query('offset', new DefaultValuePipe(0), ParseIntPipe) offset = 0,
   ): Promise<MessageRecord[]> {
-    return this.mail.listMessages(accountId, mailbox, limit, offset);
+    return this.mail.listMessages(accountId, mailbox, limit, offset, tag?.trim() || undefined);
+  }
+
+  @Get('mail/tags')
+  tags(
+    @Param('accountId') accountId: string,
+    @Query('mailbox') mailbox = 'INBOX',
+  ): Promise<Array<{ tag: string; count: number }>> {
+    return this.mail.tagCounts(accountId, mailbox);
   }
 
   @Post('mail/load-older')

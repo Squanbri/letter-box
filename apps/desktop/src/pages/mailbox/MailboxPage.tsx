@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Button, Text, Title } from '@mantine/core';
+import { Badge, Button, Text, Title } from '@mantine/core';
+import { MESSAGE_TAGS } from '@letter-box/contracts';
 import type { AccountStatus, MailboxInfo, Message } from '../../shared/api/client';
-import { errorMessage, isSeen, mailboxTitle } from '../../shared/lib/format';
+import { errorMessage, isSeen, mailboxTitle, tagLabel } from '../../shared/lib/format';
 import { ErrorBanner } from '../../shared/ui/AsyncState';
 import {
   useMailboxesQuery,
@@ -9,6 +10,7 @@ import {
   useMessageQuery,
   useMessagesQuery,
   useSyncStatusQuery,
+  useTagCountsQuery,
 } from '../../state/mail/mail';
 import { useSync } from '../../state/sync/SyncProvider';
 import { MailboxSidebar } from './components/MailboxSidebar';
@@ -28,11 +30,13 @@ export function MailboxPage({ account }: { account: AccountStatus }) {
   const [selectedMailbox, setSelectedMailbox] = useState(
     () => localStorage.getItem(`letter-box.mailbox.${account.id}`) ?? 'INBOX',
   );
+  const [selectedTag, setSelectedTag] = useState<string | null>(null);
   const [selectedUid, setSelectedUid] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const mailboxesQuery = useMailboxesQuery(account.id);
   const mailboxes = mailboxesQuery.data?.length ? mailboxesQuery.data : fallbackMailboxes;
-  const messagesQuery = useMessagesQuery(account.id, selectedMailbox);
+  const messagesQuery = useMessagesQuery(account.id, selectedMailbox, selectedTag);
+  const tagCountsQuery = useTagCountsQuery(account.id, selectedMailbox);
   const messages = useMemo(
     () => messagesQuery.data?.pages.flat() ?? [],
     [messagesQuery.data],
@@ -43,10 +47,17 @@ export function MailboxPage({ account }: { account: AccountStatus }) {
   const syncStatus = useSyncStatusQuery(account.id);
   const { syncingIds, syncAccount } = useSync();
   const actions = useMessageActions(account.id);
+  const tagCounts = useMemo(() => {
+    const map = new Map((tagCountsQuery.data ?? []).map((item) => [item.tag, item.count]));
+    return MESSAGE_TAGS
+      .map((tag) => ({ tag, count: map.get(tag) ?? 0 }))
+      .filter((item) => item.count > 0 || item.tag === selectedTag);
+  }, [selectedTag, tagCountsQuery.data]);
 
   useEffect(() => {
     localStorage.setItem(`letter-box.mailbox.${account.id}`, selectedMailbox);
     setSelectedUid(null);
+    setSelectedTag(null);
   }, [account.id, selectedMailbox]);
 
   useEffect(() => {
@@ -91,15 +102,37 @@ export function MailboxPage({ account }: { account: AccountStatus }) {
       {visibleError && <ErrorBanner message={visibleError} />}
       <div className="mail-layout">
         <MailboxSidebar mailboxes={mailboxes} selected={selectedMailbox} syncing={syncingMailboxes} onSelect={setSelectedMailbox} />
-        <MessageList
-          messages={messages}
-          selectedUid={selectedUid}
-          loading={messagesQuery.isLoading || currentSyncing}
-          fetchingMore={messagesQuery.isFetchingNextPage}
-          hasMore={messagesQuery.hasNextPage}
-          onOpen={openMessage}
-          onLoadMore={() => void messagesQuery.fetchNextPage()}
-        />
+        <div className="message-column">
+          {tagCounts.length > 0 && (
+            <div className="tag-filters" aria-label="Фильтр по тегам">
+              <button
+                className={!selectedTag ? 'active' : ''}
+                onClick={() => setSelectedTag(null)}
+              >
+                Все
+              </button>
+              {tagCounts.map(({ tag, count }) => (
+                <button
+                  key={tag}
+                  className={selectedTag === tag ? 'active' : ''}
+                  onClick={() => setSelectedTag(selectedTag === tag ? null : tag)}
+                >
+                  {tagLabel(tag)}
+                  <Badge size="xs" variant="light">{count}</Badge>
+                </button>
+              ))}
+            </div>
+          )}
+          <MessageList
+            messages={messages}
+            selectedUid={selectedUid}
+            loading={messagesQuery.isLoading || currentSyncing}
+            fetchingMore={messagesQuery.isFetchingNextPage}
+            hasMore={messagesQuery.hasNextPage}
+            onOpen={openMessage}
+            onLoadMore={() => void messagesQuery.fetchNextPage()}
+          />
+        </div>
         <MessageViewer
           message={selected}
           mailboxes={mailboxes}

@@ -4,6 +4,7 @@ import { Worker } from 'bullmq';
 import { AppModule } from './app.module';
 import { AccountService } from './account/account.service';
 import { FileCredentialStore } from './account/file-credential.store';
+import { ClassificationService } from './ai/classification.service';
 import { MailService } from './mail/mail.service';
 import { configureRuntime } from './runtime';
 import {
@@ -21,11 +22,14 @@ async function startWorker(): Promise<void> {
   const application = await NestFactory.createApplicationContext(AppModule);
   const accounts = application.get(AccountService);
   const mail = application.get(MailService);
+  const classification = application.get(ClassificationService);
   const worker = new Worker<SyncJobData, SyncJobResult>(
     SYNC_QUEUE_NAME,
     async (job) => {
       await accounts.reloadCredential(job.data.accountId);
-      return mail.syncMailbox(job.data.accountId, job.data.mailbox);
+      const result = await mail.syncMailbox(job.data.accountId, job.data.mailbox);
+      void classification.processBatch();
+      return result;
     },
     {
       connection: { url: redisUrl },
@@ -48,10 +52,29 @@ async function startWorker(): Promise<void> {
   await worker.waitUntilReady();
   console.info('[worker:sync] ready');
 
+  const classifyIntervalMs = Math.max(
+    Number(process.env.CLASSIFY_INTERVAL_MS ?? 300_000),
+    30_000,
+  );
+  const runClassification = async (): Promise<void> => {
+    try {
+      const classified = await classification.processBatch();
+      if (classified > 0) {
+        console.info(`[worker:classify] classified ${classified} message(s)`);
+      }
+    } catch (error) {
+      console.error('[worker:classify] batch failed', error);
+    }
+  };
+  void runClassification();
+  const classifyTimer = setInterval(() => void runClassification(), classifyIntervalMs);
+  classifyTimer.unref();
+
   let stopping = false;
   const shutdown = async (): Promise<void> => {
     if (stopping) return;
     stopping = true;
+    clearInterval(classifyTimer);
     await worker.close();
     await application.close();
   };

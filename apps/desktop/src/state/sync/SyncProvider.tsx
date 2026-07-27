@@ -34,8 +34,11 @@ export function SyncProvider({ children }: { children: ReactNode }) {
       client.invalidateQueries({ queryKey: accountKeys.all }),
       client.invalidateQueries({ queryKey: mailKeys.mailboxes(accountId) }),
       mailbox
-        ? client.invalidateQueries({ queryKey: mailKeys.messages(accountId, mailbox) })
+        ? client.invalidateQueries({ queryKey: ['mail', accountId, 'messages', mailbox] })
         : client.invalidateQueries({ queryKey: ['mail', accountId, 'messages'] }),
+      mailbox
+        ? client.invalidateQueries({ queryKey: mailKeys.tags(accountId, mailbox) })
+        : client.invalidateQueries({ queryKey: ['mail', accountId, 'tags'] }),
     ]);
   }, [client]);
 
@@ -73,7 +76,9 @@ export function SyncProvider({ children }: { children: ReactNode }) {
     if (!session) return undefined;
     return subscribeToServerEvents(
       (event) => {
-        if (event.type === 'sync.completed') void invalidate(event.accountId, event.mailbox);
+        if (event.type === 'sync.completed' || event.type === 'classification.completed') {
+          void invalidate(event.accountId, event.mailbox);
+        }
       },
       () => void client.invalidateQueries({ queryKey: accountKeys.all }),
     );

@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import type { AccountStatus } from '@letter-box/contracts';
 import type { AccountConfig } from '../runtime';
-import type { AccountRow } from './account.repository';
+import type { AccountRow } from './account.types';
 import { PrismaDatabaseService } from '../database/prisma-database.service';
 
 @Injectable()

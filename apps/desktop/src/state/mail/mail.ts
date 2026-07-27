@@ -13,11 +13,13 @@ const PAGE_SIZE = 50;
 export const mailKeys = {
   all: ['mail'] as const,
   mailboxes: (accountId: string) => ['mail', accountId, 'mailboxes'] as const,
-  messages: (accountId: string, mailbox: string) =>
-    ['mail', accountId, 'messages', mailbox] as const,
+  messages: (accountId: string, mailbox: string, tag?: string | null) =>
+    ['mail', accountId, 'messages', mailbox, tag ?? 'all'] as const,
   message: (accountId: string, mailbox: string, uid: number) =>
     ['mail', accountId, 'message', mailbox, uid] as const,
   syncStatus: (accountId: string) => ['mail', accountId, 'sync-status'] as const,
+  tags: (accountId: string, mailbox: string) =>
+    ['mail', accountId, 'tags', mailbox] as const,
 };
 
 export function useMailboxesQuery(accountId: string) {
@@ -34,16 +36,20 @@ export function useMailboxesQuery(accountId: string) {
   });
 }
 
-export function useMessagesQuery(accountId: string, mailbox: string) {
+export function useMessagesQuery(
+  accountId: string,
+  mailbox: string,
+  tag?: string | null,
+) {
   const client = useQueryClient();
   return useInfiniteQuery({
-    queryKey: mailKeys.messages(accountId, mailbox),
+    queryKey: mailKeys.messages(accountId, mailbox, tag),
     initialPageParam: 0,
     queryFn: async ({ pageParam }) => {
-      let page = await api.messages(accountId, mailbox, pageParam, PAGE_SIZE);
-      if (pageParam > 0 && page.length === 0) {
+      let page = await api.messages(accountId, mailbox, pageParam, PAGE_SIZE, tag ?? undefined);
+      if (pageParam > 0 && page.length === 0 && !tag) {
         const existing = client.getQueryData<{ pages: Message[][] }>(
-          mailKeys.messages(accountId, mailbox),
+          mailKeys.messages(accountId, mailbox, tag),
         );
         const messages = existing?.pages.flat() ?? [];
         const beforeUid = messages.length
@@ -51,13 +57,20 @@ export function useMessagesQuery(accountId: string, mailbox: string) {
           : undefined;
         const loaded = await api.loadOlder(accountId, mailbox, beforeUid);
         if (loaded.loaded > 0) {
-          page = await api.messages(accountId, mailbox, pageParam, PAGE_SIZE);
+          page = await api.messages(accountId, mailbox, pageParam, PAGE_SIZE, tag ?? undefined);
         }
       }
       return page;
     },
     getNextPageParam: (lastPage, pages) =>
       lastPage.length === PAGE_SIZE ? pages.flat().length : undefined,
+  });
+}
+
+export function useTagCountsQuery(accountId: string, mailbox: string) {
+  return useQuery({
+    queryKey: mailKeys.tags(accountId, mailbox),
+    queryFn: () => api.tagCounts(accountId, mailbox),
   });
 }
 
@@ -88,8 +101,8 @@ function updateMessageFlags(
   uid: number,
   flags: string[],
 ) {
-  client.setQueryData(
-    mailKeys.messages(accountId, mailbox),
+  client.setQueriesData(
+    { queryKey: ['mail', accountId, 'messages', mailbox] },
     (current: { pages: Message[][]; pageParams: unknown[] } | undefined) =>
       current ? {
         ...current,
@@ -107,7 +120,8 @@ function updateMessageFlags(
 export function useMessageActions(accountId: string) {
   const client = useQueryClient();
   const refresh = (mailbox: string) => Promise.all([
-    client.invalidateQueries({ queryKey: mailKeys.messages(accountId, mailbox) }),
+    client.invalidateQueries({ queryKey: ['mail', accountId, 'messages', mailbox] }),
+    client.invalidateQueries({ queryKey: mailKeys.tags(accountId, mailbox) }),
     client.invalidateQueries({ queryKey: mailKeys.mailboxes(accountId) }),
     client.invalidateQueries({ queryKey: accountKeys.all }),
   ]);

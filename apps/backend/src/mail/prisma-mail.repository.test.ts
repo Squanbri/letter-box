@@ -2,7 +2,6 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import test from 'node:test';
 import { PrismaAccountRepository } from '../account/prisma-account.repository';
-import { PostgresDatabaseService } from '../database/postgres-database.service';
 import { PrismaDatabaseService } from '../database/prisma-database.service';
 import type { AccountConfig } from '../runtime';
 import { PrismaMailRepository } from './prisma-mail.repository';
@@ -12,8 +11,6 @@ test('isolates composite message keys and applies changes in PostgreSQL', {
 }, async () => {
   const previousUrl = process.env.DATABASE_URL;
   process.env.DATABASE_URL = process.env.POSTGRES_TEST_URL;
-  const database = new PostgresDatabaseService();
-  await database.onModuleInit();
   const prisma = new PrismaDatabaseService();
   await prisma.onModuleInit();
   const accounts = new PrismaAccountRepository(prisma);
@@ -67,7 +64,6 @@ test('isolates composite message keys and applies changes in PostgreSQL', {
   } finally {
     await accounts.remove(null, first.id);
     await accounts.remove(null, second.id);
-    await database.onModuleDestroy();
     await prisma.onModuleDestroy();
     if (previousUrl === undefined) delete process.env.DATABASE_URL;
     else process.env.DATABASE_URL = previousUrl;

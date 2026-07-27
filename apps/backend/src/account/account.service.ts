@@ -7,7 +7,7 @@ import {
 } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 import { AccountConfig, getRuntimeOptions } from '../runtime';
-import type { AccountRow } from './account.repository';
+import type { AccountRow } from './account.types';
 import {
   ACCOUNT_REPOSITORY,
   AccountRepositoryContract,

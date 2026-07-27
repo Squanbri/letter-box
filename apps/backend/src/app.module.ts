@@ -11,7 +11,6 @@ import { ImapService } from './mail/imap.service';
 import { MailController } from './mail/mail.controller';
 import { MailService } from './mail/mail.service';
 import { EventsGateway } from './events/events.gateway';
-import { SyncLockService } from './sync/sync-lock.service';
 import { PrismaAccountRepository } from './account/prisma-account.repository';
 import { PrismaMailRepository } from './mail/prisma-mail.repository';
 import {
@@ -26,6 +25,8 @@ import { AUTH_REPOSITORY } from './auth/auth.contract';
 import { AccountOwnershipGuard } from './auth/account-ownership.guard';
 import { SyncQueueService } from './sync/sync-queue.service';
 import { PrismaDatabaseService } from './database/prisma-database.service';
+import { OllamaService } from './ai/ollama.service';
+import { ClassificationService } from './ai/classification.service';
 
 @Module({
   imports: [
@@ -82,8 +83,9 @@ import { PrismaDatabaseService } from './database/prisma-database.service';
       useClass: AuthGuard,
     },
     EventsGateway,
-    SyncLockService,
     SyncQueueService,
+    OllamaService,
+    ClassificationService,
   ],
 })
 export class AppModule {}
