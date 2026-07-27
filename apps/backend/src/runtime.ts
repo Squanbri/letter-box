@@ -15,7 +15,6 @@ export interface CredentialStore {
 }
 
 export interface RuntimeOptions {
-  databasePath?: string;
   credentialStore?: CredentialStore;
 }
 

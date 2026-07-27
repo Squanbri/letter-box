@@ -1,8 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import type { AuthUser } from '@letter-box/contracts';
 import { PrismaDatabaseService } from '../database/prisma-database.service';
-import type { StoredUser } from './auth.repository';
-import type { RegistrationResult } from './auth.contract';
+import type { RegistrationResult, StoredUser } from './auth.contract';
 
 @Injectable()
 export class PrismaAuthRepository {

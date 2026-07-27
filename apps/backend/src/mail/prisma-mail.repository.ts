@@ -8,7 +8,7 @@ import type {
   MailboxChanges,
   MessageMetadata,
 } from './mail.types';
-import type { MessageRow } from './mail.repository';
+import type { MessageRow } from './mail.types';
 
 @Injectable()
 export class PrismaMailRepository {

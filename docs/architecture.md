@@ -67,39 +67,24 @@ The PostgreSQL data model is declared in Prisma Schema. Prisma 7 uses the
 official `pg` driver adapter and a single NestJS-managed Prisma Client per
 process. Account, auth, mailbox, and message persistence use typed Prisma
 queries and interactive transactions. Direct `pg` access is limited to
-bootstrapping the already-deployed SQL migration history and the explicit
-SQLite import utility.
+bootstrapping the already-deployed SQL migration history.
 
 Application services and controllers access PostgreSQL through asynchronous
 repository contracts. Account and mail repositories own SQL, transactions,
 and persistence-specific row mapping.
 
-Redis provides the distributed synchronization lock when `REDIS_URL` is set.
-The in-process promise cache still deduplicates identical calls inside one
-server instance, while Redis prevents another instance from starting the same
-account/mailbox job. Leases are renewed while a long synchronization is active.
-
-Mailbox synchronization is submitted to a durable BullMQ queue and executed by
-a separate worker process. The API may wait for a result for transport
-compatibility, but disconnecting the HTTP client does not cancel the job.
-Identical active `accountId + mailbox` jobs share one queue job. Failed jobs use
-bounded exponential retries. Before each job the worker reloads encrypted
-credentials from the shared server credential volume, so it does not depend on
-API process memory.
-
-Existing installations use the explicit `db:import:sqlite` command. It reads
-SQLite in read-only mode and upserts all account, mailbox state, mailbox, and
-message rows in one PostgreSQL transaction. Target tables are locked during
-the import, the source file is never modified, and rerunning the command does
-not duplicate composite message keys. `better-sqlite3` is therefore a
-development/migration dependency and is absent from the production server
-runtime.
+Redis stores the durable BullMQ sync queue. Identical active
+`accountId + mailbox` jobs share one queue job. Failed jobs use bounded
+exponential retries. Before each job the worker reloads encrypted credentials
+from the shared server credential volume, so it does not depend on API process
+memory. An in-process promise map still deduplicates identical calls inside one
+worker instance.
 
 ## Target infrastructure
 
 `compose.yaml` provisions the API server, sync worker, PostgreSQL and Redis.
-PostgreSQL is the source of truth. Redis backs synchronization locks and the
-durable BullMQ queue, and can later host separate AI job queues.
+PostgreSQL is the source of truth. Redis backs the durable BullMQ queue, and can
+later host separate AI job queues.
 
 REST remains the command/query transport. Socket.IO events notify all connected
 clients about synchronization progress and later about message mutations.

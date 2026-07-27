@@ -1,7 +1,10 @@
 import type { AuthUser } from '@letter-box/contracts';
-import type { StoredUser } from './auth.repository';
 
 export const AUTH_REPOSITORY = Symbol('AUTH_REPOSITORY');
+
+export interface StoredUser extends AuthUser {
+  passwordHash: string;
+}
 
 export type RegistrationResult =
   | { status: 'created'; user: AuthUser }

@@ -1,5 +1,4 @@
 import {
-  ConflictException,
   Inject,
   Injectable,
   NotFoundException,
@@ -7,11 +6,9 @@ import {
 } from '@nestjs/common';
 import { AccountService } from '../account/account.service';
 import { ImapService } from './imap.service';
-import { MailboxRecord, MessageRecord } from './mail.types';
+import { MailboxRecord, MessageRecord, MessageRow } from './mail.types';
 import type { SyncResult } from '@letter-box/contracts';
 import { EventsGateway } from '../events/events.gateway';
-import { SyncLockService } from '../sync/sync-lock.service';
-import type { MessageRow } from './mail.repository';
 import {
   MAIL_REPOSITORY,
   MailRepositoryContract,
@@ -30,7 +27,6 @@ export class MailService {
     @Inject(ImapService) private readonly imap: ImapService,
     @Inject(AccountService) private readonly accounts: AccountService,
     @Optional() @Inject(EventsGateway) private readonly events?: EventsGateway,
-    @Optional() @Inject(SyncLockService) private readonly syncLocks?: SyncLockService,
   ) {}
 
   async connect(accountId: string): Promise<{ connected: true }> {
@@ -48,37 +44,16 @@ export class MailService {
     const syncKey = `${accountId}\0${mailbox}`;
     const running = this.syncs.get(syncKey);
     if (running) return running.promise;
-    const sync = (this.syncLocks
-      ? this.performLockedSync(accountId, mailbox)
-      : this.performLocalSync(accountId, mailbox))
+    const sync = this.performSync(accountId, mailbox)
       .finally(() => this.syncs.delete(syncKey));
     this.syncs.set(syncKey, { mailbox, promise: sync });
     return sync;
   }
 
-  private async performLocalSync(accountId: string, mailbox: string): Promise<SyncResult> {
-    await this.accounts.get(accountId);
-    await this.accounts.setStatus(accountId, 'syncing');
-    this.events?.publish({ type: 'sync.started', accountId, mailbox });
-    return await this.performSync(accountId, mailbox);
-  }
-
-  private async performLockedSync(accountId: string, mailbox: string): Promise<SyncResult> {
-    await this.accounts.get(accountId);
-    const lease = await this.syncLocks!.acquire(accountId, mailbox);
-    if (!lease) {
-      throw new ConflictException('Эта папка уже синхронизируется другим процессом');
-    }
-    await this.accounts.setStatus(accountId, 'syncing');
-    this.events?.publish({ type: 'sync.started', accountId, mailbox });
-    try {
-      return await this.performSync(accountId, mailbox);
-    } finally {
-      await this.syncLocks!.release(lease);
-    }
-  }
-
   private async performSync(accountId: string, mailbox: string): Promise<SyncResult> {
+    await this.accounts.get(accountId);
+    await this.accounts.setStatus(accountId, 'syncing');
+    this.events?.publish({ type: 'sync.started', accountId, mailbox });
     try {
       const uidValidity = await this.repository.mailboxState(accountId, mailbox);
       const knownUids = await this.repository.knownUids(accountId, mailbox);

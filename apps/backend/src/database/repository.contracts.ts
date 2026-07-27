@@ -1,12 +1,12 @@
 import type { AccountStatus, MailboxRecord } from '@letter-box/contracts';
 import type { AccountConfig } from '../runtime';
-import type { AccountRow } from '../account/account.repository';
+import type { AccountRow } from '../account/account.types';
 import type {
   ClassificationPreparation,
   MailboxChanges,
   MessageMetadata,
+  MessageRow,
 } from '../mail/mail.types';
-import type { MessageRow } from '../mail/mail.repository';
 
 export const ACCOUNT_REPOSITORY = Symbol('ACCOUNT_REPOSITORY');
 export const MAIL_REPOSITORY = Symbol('MAIL_REPOSITORY');
