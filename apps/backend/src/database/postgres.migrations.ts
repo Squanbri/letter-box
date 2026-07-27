@@ -133,4 +133,16 @@ export const postgresMigrations: PostgresMigration[] = [
       ON messages(account_id, mailbox, classification_status);
     `,
   },
+  {
+    version: 6,
+    name: 'message classification tags',
+    sql: `
+      ALTER TABLE messages
+      ADD COLUMN tags JSONB NOT NULL DEFAULT '[]'::jsonb;
+
+      ALTER TABLE messages
+      ADD CONSTRAINT messages_tags_array_check
+      CHECK (jsonb_typeof(tags) = 'array');
+    `,
+  },
 ];

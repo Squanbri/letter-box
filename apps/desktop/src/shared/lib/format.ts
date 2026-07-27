@@ -1,4 +1,9 @@
 import type { AccountStatus, MailboxInfo, Message } from '../api/client';
+import { MESSAGE_TAG_LABELS, type MessageTag } from '@letter-box/contracts';
+
+export function tagLabel(tag: string) {
+  return MESSAGE_TAG_LABELS[tag as MessageTag] ?? tag;
+}
 
 export function providerName(provider: AccountStatus['provider']) {
   return provider === 'mailru' ? 'Mail.ru' : provider === 'yandex' ? 'Яндекс' : 'Gmail';

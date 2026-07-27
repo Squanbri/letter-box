@@ -48,6 +48,14 @@ services:
       JWT_SECRET: ${JWT_SECRET:-development-jwt-secret-change-before-production}
       SYNC_WORKER_CONCURRENCY: ${SYNC_WORKER_CONCURRENCY:-4}
       LETTER_BOX_PROCESS_ROLE: worker
+      # Host Ollama from Docker Desktop / Linux bridge
+      OLLAMA_URL: http://host.docker.internal:11434
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen3:0.6b}
+      OLLAMA_ENABLED: ${OLLAMA_ENABLED:-true}
+      CLASSIFY_INTERVAL_MS: ${CLASSIFY_INTERVAL_MS:-30000}
+      CLASSIFY_BATCH_SIZE: ${CLASSIFY_BATCH_SIZE:-10}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     volumes:
       - letter_box_server:/app/data
     depends_on:

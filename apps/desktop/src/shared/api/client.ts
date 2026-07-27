@@ -140,9 +140,13 @@ export const api = {
   mailboxes: (id: string) => request<MailboxRecord[]>(`${accountPath(id)}/mailboxes`),
   syncMailboxes: (id: string) =>
     request<MailboxRecord[]>(`${accountPath(id)}/mailboxes/sync`, { method: 'POST' }),
-  messages: (id: string, mailbox = 'INBOX', offset = 0, limit = 50) =>
+  messages: (id: string, mailbox = 'INBOX', offset = 0, limit = 50, tag?: string) =>
     request<MessageRecord[]>(
-      `${accountPath(id)}/messages?mailbox=${encodeURIComponent(mailbox)}&offset=${offset}&limit=${limit}`,
+      `${accountPath(id)}/messages?mailbox=${encodeURIComponent(mailbox)}&offset=${offset}&limit=${limit}${tag ? `&tag=${encodeURIComponent(tag)}` : ''}`,
+    ),
+  tagCounts: (id: string, mailbox = 'INBOX') =>
+    request<Array<{ tag: string; count: number }>>(
+      `${accountPath(id)}/mail/tags?mailbox=${encodeURIComponent(mailbox)}`,
     ),
   loadOlder: (id: string, mailbox: string, beforeUid?: number) =>
     request<{ loaded: number }>(

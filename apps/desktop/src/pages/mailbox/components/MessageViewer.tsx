@@ -1,7 +1,7 @@
 import { Button, Group, Select, Stack, Text, Title } from '@mantine/core';
 import type { MailboxInfo, Message } from '../../../shared/api/client';
 import { prepareEmailHtml } from '../../../shared/lib/email-html';
-import { isSeen, mailboxDisplayName } from '../../../shared/lib/format';
+import { isSeen, mailboxDisplayName, tagLabel } from '../../../shared/lib/format';
 import { EmptyState, LoadingState } from '../../../shared/ui/AsyncState';
 
 export function MessageViewer({
@@ -41,6 +41,13 @@ export function MessageViewer({
       <header className="message-header">
         <Stack gap="sm">
           <Title order={2}>{message.subject || 'Без темы'}</Title>
+          {(message.tags?.length ?? 0) > 0 && (
+            <Group gap={6}>
+              {message.tags.map((tag) => (
+                <span key={tag} className="message-tag">{tagLabel(tag)}</span>
+              ))}
+            </Group>
+          )}
           <Group gap="xs">
             <Button
               size="xs"

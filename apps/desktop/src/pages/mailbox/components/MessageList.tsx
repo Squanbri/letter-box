@@ -1,6 +1,6 @@
 import { Loader } from '@mantine/core';
 import type { Message } from '../../../shared/api/client';
-import { formatDate, formatSize, isSeen } from '../../../shared/lib/format';
+import { formatDate, formatSize, isSeen, tagLabel } from '../../../shared/lib/format';
 import { EmptyState, LoadingState } from '../../../shared/ui/AsyncState';
 
 export function MessageList({
@@ -49,6 +49,13 @@ export function MessageList({
               <time>{formatDate(message.date)}</time>
             </div>
             <span className="subject">{message.flags.includes('\\Flagged') ? '★ ' : ''}{message.subject || 'Без темы'}</span>
+            {(message.tags?.length ?? 0) > 0 && (
+              <div className="message-tags">
+                {message.tags.map((tag) => (
+                  <span key={tag} className="message-tag">{tagLabel(tag)}</span>
+                ))}
+              </div>
+            )}
             <span className="meta">{formatSize(message.size)}</span>
           </button>
         ))}

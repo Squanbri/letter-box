@@ -50,6 +50,7 @@ export interface MessageRecord {
   date: string;
   flags: string[];
   size: number;
+  tags: string[];
   body: { text: string | null; html: string | null } | null;
 }
 
@@ -73,6 +74,32 @@ export interface SyncStatus {
   mailboxes: string[];
 }
 
+export const MESSAGE_TAGS = [
+  'spam',
+  'promo',
+  'work',
+  'games',
+  'news',
+  'it',
+  'personal',
+  'finance',
+  'other',
+] as const;
+
+export type MessageTag = (typeof MESSAGE_TAGS)[number];
+
+export const MESSAGE_TAG_LABELS: Record<MessageTag, string> = {
+  spam: 'Спам',
+  promo: 'Акции',
+  work: 'Работа',
+  games: 'Игры',
+  news: 'Новости',
+  it: 'IT',
+  personal: 'Личное',
+  finance: 'Финансы',
+  other: 'Другое',
+};
+
 export type ServerEvent =
   | { type: 'sync.started'; accountId: string; mailbox: string }
   | {
@@ -86,4 +113,11 @@ export type ServerEvent =
     accountId: string;
     mailbox: string;
     error: string;
+  }
+  | {
+    type: 'classification.completed';
+    accountId: string;
+    mailbox: string;
+    uid: number;
+    tags: string[];
   };

@@ -32,7 +32,10 @@ REST API и Socket.IO защищены JWT. Каждый почтовый акк
 запуски получают только новые UID, обновляют флаги существующих писем и удаляют
 локальные записи, которых больше нет на сервере. В PostgreSQL сохраняются UID,
 тема, отправитель, дата, флаги и размер. Тело письма запрашивается с IMAP и
-сохраняется только при первом открытии письма.
+сохраняется только при первом открытии письма. Для непрочитанных писем sync
+дополнительно готовит короткий `classification_text`; sync worker периодически
+отправляет его в локальный Ollama (`qwen3:0.6b` по умолчанию, `keep_alive: 0`)
+и сохраняет AI-теги для фильтрации.
 
 ## Запуск
 
@@ -158,6 +161,7 @@ Backend больше не входит в Electron-приложение. Сер�
 | `POST` | `/accounts/:accountId/mail/sync?mailbox=INBOX` | Синхронизация выбранной папки |
 | `GET` | `/accounts/:accountId/mail/sync` | Активные и ожидающие задания синхронизации |
 | `GET` | `/accounts/:accountId/messages?mailbox=INBOX` | Локальный список писем |
+| `GET` | `/accounts/:accountId/mail/tags?mailbox=INBOX` | Счётчики AI-тегов |
 | `GET` | `/accounts/:accountId/messages/:uid?mailbox=INBOX` | Письмо с ленивой загрузкой тела |
 | `PATCH` | `/accounts/:accountId/messages/:uid/seen?mailbox=INBOX` | Изменение состояния прочитано/не прочитано |
 | `PATCH` | `/accounts/:accountId/messages/:uid/flagged?mailbox=INBOX` | Изменение флага «важное» |

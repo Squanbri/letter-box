@@ -99,6 +99,7 @@ export class MailService {
     mailbox = 'INBOX',
     limit = 50,
     offset = 0,
+    tag?: string,
   ): Promise<MessageRecord[]> {
     await this.accounts.get(accountId);
     const rows = await this.repository.listMessages(
@@ -106,8 +107,17 @@ export class MailService {
       mailbox,
       Math.min(Math.max(limit, 1), 100),
       Math.max(offset, 0),
+      tag,
     );
     return rows.map((row) => this.mapRow(row, false));
+  }
+
+  async tagCounts(
+    accountId: string,
+    mailbox = 'INBOX',
+  ): Promise<Array<{ tag: string; count: number }>> {
+    await this.accounts.get(accountId);
+    return this.repository.tagCounts(accountId, mailbox);
   }
 
   async listMailboxes(accountId: string): Promise<MailboxRecord[]> {
@@ -279,6 +289,7 @@ export class MailService {
       subject: row.subject,
       from: { name: row.sender_name, address: row.sender_address },
       date: row.received_at, flags: JSON.parse(row.flags) as string[], size: row.size,
+      tags: row.tags,
       body: includeBody ? { text: row.body_text, html: row.body_html } : null,
     };
   }

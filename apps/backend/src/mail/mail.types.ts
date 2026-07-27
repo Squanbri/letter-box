@@ -51,4 +51,5 @@ export interface MessageRow {
   classification_text: string | null;
   classification_status: ClassificationStatus;
   classified_at: string | null;
+  tags: string[];
 }

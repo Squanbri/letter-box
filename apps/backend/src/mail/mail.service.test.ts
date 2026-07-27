@@ -47,6 +47,7 @@ function repositoryMock(
     hasMailbox: async () => true,
     specialMailbox: async () => undefined,
     removeMessage: async () => undefined,
+    tagCounts: async () => [],
     ...overrides,
   };
 }
@@ -77,6 +78,7 @@ function row(partial: Partial<MessageRow> & Pick<MessageRow, 'uid' | 'mailbox'>)
     classification_text: null,
     classification_status: 'pending',
     classified_at: null,
+    tags: [],
     ...partial,
   };
 }
