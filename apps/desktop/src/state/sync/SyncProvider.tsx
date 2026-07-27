@@ -40,6 +40,7 @@ export function SyncProvider({ children }: { children: ReactNode }) {
       mailbox
         ? client.invalidateQueries({ queryKey: mailKeys.tags(accountId, mailbox) })
         : client.invalidateQueries({ queryKey: ['mail', accountId, 'tags'] }),
+      client.invalidateQueries({ queryKey: ['mail', accountId, 'thread'] }),
     ]);
   }, [client]);
 

@@ -20,6 +20,8 @@ export interface ComposeDraft {
   cc: string;
   subject: string;
   text: string;
+  inReplyTo?: string;
+  references?: string;
 }
 
 export function buildComposeDraft(
@@ -40,12 +42,19 @@ export function buildComposeDraft(
   const date = new Date(message.date).toLocaleString('ru-RU');
 
   if (mode === 'reply') {
+    const parentId = message.messageId ?? undefined;
+    const references = [
+      ...message.references,
+      ...(parentId ? [parentId] : []),
+    ].filter(Boolean);
     return {
       mode,
       to: from,
       cc: '',
       subject: replySubject(message.subject),
       text: `\n\n\n${date}, ${fromLabel} написал(а):\n\n${quoteText(body)}`,
+      inReplyTo: parentId,
+      references: references.length ? references.join(' ') : undefined,
     };
   }
 
@@ -176,6 +185,8 @@ function toSendInput(form: ComposeDraft): SendMessageInput {
     cc: splitAddresses(form.cc),
     subject: form.subject,
     text: form.text,
+    inReplyTo: form.inReplyTo,
+    references: form.references,
   };
 }
 

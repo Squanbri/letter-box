@@ -11,6 +11,10 @@ export interface MessageMetadata {
   date: string;
   flags: string[];
   size: number;
+  messageId: string | null;
+  inReplyTo: string | null;
+  references: string[];
+  threadId: string | null;
 }
 
 export interface MessageFlags {
@@ -52,4 +56,42 @@ export interface MessageRow {
   classification_status: ClassificationStatus;
   classified_at: string | null;
   tags: string[];
+  message_id: string | null;
+  in_reply_to: string | null;
+  references_header: string | null;
+  thread_id: string | null;
+}
+
+export function normalizeMessageId(value: string | null | undefined): string | null {
+  if (!value) return null;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  const match = trimmed.match(/<[^>]+>/);
+  return (match?.[0] ?? trimmed).toLowerCase();
+}
+
+export function parseMessageIds(value: string | string[] | null | undefined): string[] {
+  if (!value) return [];
+  const raw = Array.isArray(value) ? value.join(' ') : value;
+  const ids = raw.match(/<[^>]+>/g) ?? (raw.trim() ? [raw.trim()] : []);
+  const unique = new Set<string>();
+  for (const id of ids) {
+    const normalized = normalizeMessageId(id);
+    if (normalized) unique.add(normalized);
+  }
+  return [...unique];
+}
+
+export function computeThreadId(
+  messageId: string | null | undefined,
+  inReplyTo: string | null | undefined,
+  references: string[] | string | null | undefined,
+): string | null {
+  const refs = parseMessageIds(references);
+  if (refs.length > 0) return refs[0] ?? null;
+  return normalizeMessageId(inReplyTo) ?? normalizeMessageId(messageId);
+}
+
+export function serializeReferences(ids: string[]): string | null {
+  return ids.length > 0 ? ids.join(' ') : null;
 }

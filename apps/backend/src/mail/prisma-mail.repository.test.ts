@@ -102,5 +102,9 @@ function message(uid: number, flags: string[]) {
     date: new Date(uid * 1000).toISOString(),
     flags,
     size: uid,
+    messageId: `<msg-${uid}@example.com>`,
+    inReplyTo: null,
+    references: [] as string[],
+    threadId: `<msg-${uid}@example.com>`,
   };
 }

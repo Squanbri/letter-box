@@ -11,8 +11,19 @@ import {
   ClassificationPreparation,
   MessageFlags,
   MessageMetadata,
+  computeThreadId,
+  normalizeMessageId,
+  parseMessageIds,
 } from './mail.types';
 import { AccountService } from '../account/account.service';
+
+const METADATA_FETCH = {
+  uid: true,
+  envelope: true,
+  flags: true,
+  size: true,
+  headers: ['references'] as string[],
+};
 
 @Injectable()
 export class ImapService {
@@ -66,7 +77,7 @@ export class ImapService {
       if (newUids.length > 0) {
         for await (const message of client.fetch(
           newUids,
-          { uid: true, envelope: true, flags: true, size: true },
+          METADATA_FETCH,
           { uid: true },
         )) {
           messages.push(this.toMetadata(message));
@@ -121,7 +132,7 @@ export class ImapService {
       if (pageUids.length > 0) {
         for await (const message of client.fetch(
           pageUids,
-          { uid: true, envelope: true, flags: true, size: true },
+          METADATA_FETCH,
           { uid: true },
         )) {
           messages.push(this.toMetadata(message));
@@ -131,7 +142,14 @@ export class ImapService {
     });
   }
 
-  async fetchBody(accountId: string, mailbox: string, uid: number): Promise<{ text: string | null; html: string | null }> {
+  async fetchBody(accountId: string, mailbox: string, uid: number): Promise<{
+    text: string | null;
+    html: string | null;
+    messageId: string | null;
+    inReplyTo: string | null;
+    references: string[];
+    threadId: string | null;
+  }> {
     return this.withMailbox(accountId, mailbox, async (client) => {
       const message = await client.fetchOne(uid, { source: true }, { uid: true });
 
@@ -140,9 +158,16 @@ export class ImapService {
       }
 
       const parsed = await simpleParser(message.source);
+      const messageId = normalizeMessageId(parsed.messageId);
+      const inReplyTo = normalizeMessageId(parsed.inReplyTo);
+      const references = parseMessageIds(parsed.references);
       return {
         text: parsed.text || null,
         html: typeof parsed.html === 'string' ? parsed.html : null,
+        messageId,
+        inReplyTo,
+        references,
+        threadId: computeThreadId(messageId, inReplyTo, references),
       };
     });
   }
@@ -376,6 +401,9 @@ export class ImapService {
 
   private toMetadata(message: FetchMessageObject): MessageMetadata {
     const sender = message.envelope?.from?.[0];
+    const messageId = normalizeMessageId(message.envelope?.messageId);
+    const inReplyTo = normalizeMessageId(message.envelope?.inReplyTo);
+    const references = parseMessageIds(extractReferencesHeader(message.headers));
     return {
       uid: message.uid,
       subject: message.envelope?.subject ?? null,
@@ -384,6 +412,10 @@ export class ImapService {
       date: (message.envelope?.date ?? new Date(0)).toISOString(),
       flags: Array.from(message.flags ?? []),
       size: message.size ?? 0,
+      messageId,
+      inReplyTo,
+      references,
+      threadId: computeThreadId(messageId, inReplyTo, references),
     };
   }
 }
@@ -416,6 +448,13 @@ export async function parseClassificationSource(
     parsed.text
     || (typeof parsed.html === 'string' ? stripHtml(parsed.html) : ''),
   );
+}
+
+function extractReferencesHeader(headers: Buffer | undefined): string | null {
+  if (!headers?.length) return null;
+  const text = headers.toString('utf8');
+  const match = text.match(/^references:\s*(.*(?:\r?\n[ \t].*)*)/im);
+  return match?.[1]?.replace(/\r?\n[ \t]+/g, ' ').trim() ?? null;
 }
 
 function stripHtml(html: string): string {

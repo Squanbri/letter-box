@@ -104,6 +104,15 @@ export class MailController {
     return this.mail.getMessage(accountId, mailbox, uid);
   }
 
+  @Get('messages/:uid/thread')
+  thread(
+    @Param('accountId') accountId: string,
+    @Param('uid', ParseIntPipe) uid: number,
+    @Query('mailbox') mailbox = 'INBOX',
+  ): Promise<MessageRecord[]> {
+    return this.mail.listThread(accountId, mailbox, uid);
+  }
+
   @Patch('messages/:uid/seen')
   setSeen(
     @Param('accountId') accountId: string,

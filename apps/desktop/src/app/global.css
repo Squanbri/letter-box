@@ -628,6 +628,89 @@ button.secondary {
   white-space: nowrap;
 }
 
+.thread-panel {
+  border-bottom: 1px solid var(--border-soft);
+  background: rgba(255, 250, 240, .55);
+}
+
+.thread-panel > header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 18px 8px;
+}
+
+.thread-panel > header strong {
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.thread-list {
+  list-style: none;
+  margin: 0;
+  padding: 0 10px 12px;
+  display: grid;
+  gap: 4px;
+  max-height: 220px;
+  overflow: auto;
+}
+
+.thread-item {
+  width: 100%;
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) auto;
+  grid-template-areas:
+    "from meta"
+    "snippet snippet";
+  gap: 2px 12px;
+  padding: 8px 10px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.thread-item:hover {
+  background: var(--hover-bg);
+}
+
+.thread-item.active {
+  border-color: var(--border-soft);
+  background: var(--accent-soft);
+}
+
+.thread-from {
+  grid-area: from;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.thread-meta {
+  grid-area: meta;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-faint);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.thread-snippet {
+  grid-area: snippet;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
 .message-body {
   min-height: 0;
   overflow: auto;

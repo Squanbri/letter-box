@@ -2,13 +2,17 @@ import { Injectable } from '@nestjs/common';
 import type { MailboxRecord } from '@letter-box/contracts';
 import { Prisma } from '../generated/prisma/client';
 import { PrismaDatabaseService } from '../database/prisma-database.service';
+import {
+  parseMessageIds,
+  serializeReferences,
+  type MessageRow,
+} from './mail.types';
 import type {
   ClassificationPreparation,
   ClassificationStatus,
   MailboxChanges,
   MessageMetadata,
 } from './mail.types';
-import type { MessageRow } from './mail.types';
 
 @Injectable()
 export class PrismaMailRepository {
@@ -246,6 +250,14 @@ export class PrismaMailRepository {
     return row ? this.normalizeMessage(row) : undefined;
   }
 
+  async listThread(accountId: string, threadId: string): Promise<MessageRow[]> {
+    const rows = await this.database.client.message.findMany({
+      where: { accountId, threadId },
+      orderBy: [{ receivedAt: 'asc' }, { uid: 'asc' }],
+    });
+    return rows.map((row) => this.normalizeMessage(row));
+  }
+
   async classificationCandidateUids(
     accountId: string,
     mailbox: string,
@@ -279,7 +291,14 @@ export class PrismaMailRepository {
     accountId: string,
     mailbox: string,
     uid: number,
-    body: { text: string | null; html: string | null },
+    body: {
+      text: string | null;
+      html: string | null;
+      messageId?: string | null;
+      inReplyTo?: string | null;
+      references?: string[];
+      threadId?: string | null;
+    },
     loadedAt: string,
   ): Promise<void> {
     await this.database.client.message.updateMany({
@@ -288,6 +307,12 @@ export class PrismaMailRepository {
         bodyText: body.text,
         bodyHtml: body.html,
         bodyLoadedAt: new Date(loadedAt),
+        ...(body.messageId !== undefined ? { messageId: body.messageId } : {}),
+        ...(body.inReplyTo !== undefined ? { inReplyTo: body.inReplyTo } : {}),
+        ...(body.references !== undefined
+          ? { referencesHeader: serializeReferences(body.references) }
+          : {}),
+        ...(body.threadId !== undefined ? { threadId: body.threadId } : {}),
       },
     });
   }
@@ -338,6 +363,10 @@ export class PrismaMailRepository {
       receivedAt: new Date(message.date),
       flags: message.flags,
       size: BigInt(message.size),
+      messageId: message.messageId,
+      inReplyTo: message.inReplyTo,
+      referencesHeader: serializeReferences(message.references),
+      threadId: message.threadId,
     };
     return transaction.message.upsert({
       where: {
@@ -374,6 +403,10 @@ export class PrismaMailRepository {
     classificationStatus: string;
     classifiedAt: Date | null;
     tags: Prisma.JsonValue;
+    messageId?: string | null;
+    inReplyTo?: string | null;
+    referencesHeader?: string | null;
+    threadId?: string | null;
   }): MessageRow {
     return {
       account_id: row.accountId,
@@ -392,6 +425,10 @@ export class PrismaMailRepository {
       classification_status: row.classificationStatus as ClassificationStatus,
       classified_at: row.classifiedAt?.toISOString() ?? null,
       tags: Array.isArray(row.tags) ? row.tags.map(String) : [],
+      message_id: row.messageId ?? null,
+      in_reply_to: row.inReplyTo ?? null,
+      references_header: row.referencesHeader ?? null,
+      thread_id: row.threadId ?? null,
     };
   }
 

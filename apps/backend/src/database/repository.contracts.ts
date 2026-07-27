@@ -55,6 +55,7 @@ export interface MailRepositoryContract {
     mailbox: string,
     uid: number,
   ): Promise<MessageRow | undefined>;
+  listThread(accountId: string, threadId: string): Promise<MessageRow[]>;
   tagCounts(
     accountId: string,
     mailbox: string,
@@ -79,7 +80,14 @@ export interface MailRepositoryContract {
     accountId: string,
     mailbox: string,
     uid: number,
-    body: { text: string | null; html: string | null },
+    body: {
+      text: string | null;
+      html: string | null;
+      messageId?: string | null;
+      inReplyTo?: string | null;
+      references?: string[];
+      threadId?: string | null;
+    },
     loadedAt: string,
   ): Promise<void>;
   saveFlags(

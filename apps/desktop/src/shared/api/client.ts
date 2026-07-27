@@ -167,6 +167,10 @@ export const api = {
     request<MessageRecord>(
       `${accountPath(id)}/messages/${uid}?mailbox=${encodeURIComponent(mailbox)}`,
     ),
+  messageThread: (id: string, uid: number, mailbox = 'INBOX') =>
+    request<MessageRecord[]>(
+      `${accountPath(id)}/messages/${uid}/thread?mailbox=${encodeURIComponent(mailbox)}`,
+    ),
   setSeen: (id: string, uid: number, seen: boolean, mailbox = 'INBOX') =>
     request<MessageRecord>(
       `${accountPath(id)}/messages/${uid}/seen?mailbox=${encodeURIComponent(mailbox)}`,

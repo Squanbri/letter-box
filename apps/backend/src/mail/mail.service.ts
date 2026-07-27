@@ -6,7 +6,7 @@ import {
 } from '@nestjs/common';
 import { AccountService } from '../account/account.service';
 import { ImapService } from './imap.service';
-import { MailboxRecord, MessageRecord, MessageRow } from './mail.types';
+import { MailboxRecord, MessageRecord, MessageRow, parseMessageIds } from './mail.types';
 import type {
   DashboardStats,
   SendMessageInput,
@@ -188,7 +188,7 @@ export class MailService {
   async getMessage(accountId: string, mailbox: string, uid: number): Promise<MessageRecord> {
     let row = await this.findRow(accountId, mailbox, uid);
     if (!row) throw new NotFoundException(`Письмо с UID ${uid} отсутствует в локальной базе`);
-    if (!row.body_loaded_at) {
+    if (!row.body_loaded_at || !row.message_id) {
       const body = await this.imap.fetchBody(accountId, mailbox, uid);
       await this.repository.saveBody(
         accountId,
@@ -200,6 +200,21 @@ export class MailService {
       row = (await this.findRow(accountId, mailbox, uid))!;
     }
     return this.mapRow(row, true);
+  }
+
+  async listThread(
+    accountId: string,
+    mailbox: string,
+    uid: number,
+  ): Promise<MessageRecord[]> {
+    await this.accounts.get(accountId);
+    const row = await this.findRow(accountId, mailbox, uid);
+    if (!row) throw new NotFoundException(`Письмо с UID ${uid} отсутствует в локальной базе`);
+    if (!row.thread_id) {
+      return [this.mapRow(row, false)];
+    }
+    const thread = await this.repository.listThread(accountId, row.thread_id);
+    return thread.map((item) => this.mapRow(item, false));
   }
 
   async setSeen(
@@ -389,6 +404,10 @@ export class MailService {
       from: { name: row.sender_name, address: row.sender_address },
       date: row.received_at, flags: JSON.parse(row.flags) as string[], size: row.size,
       tags: row.tags,
+      messageId: row.message_id,
+      inReplyTo: row.in_reply_to,
+      references: parseMessageIds(row.references_header),
+      threadId: row.thread_id,
       body: includeBody ? { text: row.body_text, html: row.body_html } : null,
     };
   }
