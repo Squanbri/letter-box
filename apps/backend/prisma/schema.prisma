@@ -77,10 +77,14 @@ model Message {
   bodyText    String?   @map("body_text")
   bodyHtml    String?   @map("body_html")
   bodyLoadedAt DateTime? @map("body_loaded_at") @db.Timestamptz
+  classificationText String? @map("classification_text")
+  classificationStatus String @default("pending") @map("classification_status")
+  classifiedAt DateTime? @map("classified_at") @db.Timestamptz
   account     Account   @relation(fields: [accountId], references: [id], onDelete: Cascade)
 
   @@id([accountId, mailbox, uid])
   @@index([accountId, mailbox, receivedAt(sort: Desc), uid(sort: Desc)], map: "idx_messages_received_at")
+  @@index([accountId, mailbox, classificationStatus], map: "idx_messages_classification_status")
   @@map("messages")
 }
 

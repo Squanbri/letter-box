@@ -2,7 +2,12 @@ import { Injectable } from '@nestjs/common';
 import type { MailboxRecord } from '@letter-box/contracts';
 import type { Prisma } from '../generated/prisma/client';
 import { PrismaDatabaseService } from '../database/prisma-database.service';
-import type { MailboxChanges, MessageMetadata } from './mail.types';
+import type {
+  ClassificationPreparation,
+  ClassificationStatus,
+  MailboxChanges,
+  MessageMetadata,
+} from './mail.types';
 import type { MessageRow } from './mail.repository';
 
 @Injectable()
@@ -53,6 +58,12 @@ export class PrismaMailRepository {
           data: { flags: update.flags },
         });
       }
+      await this.saveClassificationPreparationsWithClient(
+        transaction,
+        accountId,
+        mailbox,
+        changes.classificationPreparations ?? [],
+      );
 
       const stale = await transaction.message.deleteMany({
         where: {
@@ -173,6 +184,35 @@ export class PrismaMailRepository {
     return row ? this.normalizeMessage(row) : undefined;
   }
 
+  async classificationCandidateUids(
+    accountId: string,
+    mailbox: string,
+  ): Promise<number[]> {
+    const rows = await this.database.client.message.findMany({
+      where: { accountId, mailbox, classificationText: null },
+      select: { uid: true, flags: true },
+      orderBy: { uid: 'asc' },
+    });
+    return rows
+      .filter(({ flags }) =>
+        !Array.isArray(flags) || !flags.includes('\\Seen'))
+      .map(({ uid }) => Number(uid));
+  }
+
+  async saveClassificationPreparations(
+    accountId: string,
+    mailbox: string,
+    preparations: ClassificationPreparation[],
+  ): Promise<void> {
+    await this.database.client.$transaction((transaction) =>
+      this.saveClassificationPreparationsWithClient(
+        transaction,
+        accountId,
+        mailbox,
+        preparations,
+      ));
+  }
+
   async saveBody(
     accountId: string,
     mailbox: string,
@@ -268,6 +308,9 @@ export class PrismaMailRepository {
     bodyText: string | null;
     bodyHtml: string | null;
     bodyLoadedAt: Date | null;
+    classificationText: string | null;
+    classificationStatus: string;
+    classifiedAt: Date | null;
   }): MessageRow {
     return {
       account_id: row.accountId,
@@ -282,6 +325,31 @@ export class PrismaMailRepository {
       body_text: row.bodyText,
       body_html: row.bodyHtml,
       body_loaded_at: row.bodyLoadedAt?.toISOString() ?? null,
+      classification_text: row.classificationText,
+      classification_status: row.classificationStatus as ClassificationStatus,
+      classified_at: row.classifiedAt?.toISOString() ?? null,
     };
+  }
+
+  private async saveClassificationPreparationsWithClient(
+    client: Prisma.TransactionClient,
+    accountId: string,
+    mailbox: string,
+    preparations: ClassificationPreparation[],
+  ): Promise<void> {
+    for (const preparation of preparations) {
+      await client.message.updateMany({
+        where: {
+          accountId,
+          mailbox,
+          uid: BigInt(preparation.uid),
+          classificationText: null,
+        },
+        data: {
+          classificationText: preparation.text,
+          classificationStatus: preparation.status,
+        },
+      });
+    }
   }
 }

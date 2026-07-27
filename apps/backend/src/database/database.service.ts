@@ -82,6 +82,9 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
         body_text TEXT,
         body_html TEXT,
         body_loaded_at TEXT,
+        classification_text TEXT,
+        classification_status TEXT NOT NULL DEFAULT 'pending',
+        classified_at TEXT,
         PRIMARY KEY (account_id, mailbox, uid),
         FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE
       );
@@ -92,13 +95,22 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
     this.ensureColumn('accounts', 'user_id', 'TEXT');
     this.ensureColumn('mailboxes', 'total_count', 'INTEGER NOT NULL DEFAULT 0');
     this.ensureColumn('mailboxes', 'unread_count', 'INTEGER NOT NULL DEFAULT 0');
+    this.ensureColumn('messages', 'classification_text', 'TEXT');
+    this.ensureColumn(
+      'messages',
+      'classification_status',
+      "TEXT NOT NULL DEFAULT 'pending'",
+    );
+    this.ensureColumn('messages', 'classified_at', 'TEXT');
     this.connection.exec(`
       CREATE INDEX IF NOT EXISTS idx_accounts_user_created
       ON accounts(user_id, created_at);
       CREATE INDEX IF NOT EXISTS idx_auth_sessions_user
       ON auth_sessions(user_id);
       CREATE INDEX IF NOT EXISTS idx_auth_sessions_expiry
-      ON auth_sessions(expires_at)
+      ON auth_sessions(expires_at);
+      CREATE INDEX IF NOT EXISTS idx_messages_classification_status
+      ON messages(account_id, mailbox, classification_status)
     `);
     this.connection.pragma('foreign_keys = ON');
 

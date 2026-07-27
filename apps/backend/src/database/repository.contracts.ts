@@ -1,7 +1,11 @@
 import type { AccountStatus, MailboxRecord } from '@letter-box/contracts';
 import type { AccountConfig } from '../runtime';
 import type { AccountRow } from '../account/account.repository';
-import type { MailboxChanges, MessageMetadata } from '../mail/mail.types';
+import type {
+  ClassificationPreparation,
+  MailboxChanges,
+  MessageMetadata,
+} from '../mail/mail.types';
 import type { MessageRow } from '../mail/mail.repository';
 
 export const ACCOUNT_REPOSITORY = Symbol('ACCOUNT_REPOSITORY');
@@ -50,6 +54,12 @@ export interface MailRepositoryContract {
     mailbox: string,
     uid: number,
   ): Promise<MessageRow | undefined>;
+  classificationCandidateUids(accountId: string, mailbox: string): Promise<number[]>;
+  saveClassificationPreparations(
+    accountId: string,
+    mailbox: string,
+    preparations: ClassificationPreparation[],
+  ): Promise<void>;
   saveBody(
     accountId: string,
     mailbox: string,
