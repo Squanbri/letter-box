@@ -32,6 +32,7 @@ export function SyncProvider({ children }: { children: ReactNode }) {
   const invalidate = useCallback(async (accountId: string, mailbox?: string) => {
     await Promise.all([
       client.invalidateQueries({ queryKey: accountKeys.all }),
+      client.invalidateQueries({ queryKey: ['mail', 'stats'] }),
       client.invalidateQueries({ queryKey: mailKeys.mailboxes(accountId) }),
       mailbox
         ? client.invalidateQueries({ queryKey: ['mail', accountId, 'messages', mailbox] })

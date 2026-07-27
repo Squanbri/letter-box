@@ -4,6 +4,7 @@ import { usePreferences } from '../../state/preferences/PreferencesProvider';
 import { useSync } from '../../state/sync/SyncProvider';
 import { useWorkspace } from '../../state/workspace/WorkspaceProvider';
 import { AccountList } from './components/AccountList';
+import { DashboardCharts } from './components/DashboardCharts';
 import { SmartSummaryCard } from './components/SmartSummaryCard';
 import { StatsGrid } from './components/StatsGrid';
 import { SyncSettingsCard } from './components/SyncSettingsCard';
@@ -34,6 +35,7 @@ export function OverviewPage({
       </header>
       <div className="dashboard">
         <StatsGrid accounts={accounts} />
+        <DashboardCharts accounts={accounts} />
         <div className="dashboard-grid">
           <AccountList
             accounts={accounts}

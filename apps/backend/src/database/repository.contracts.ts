@@ -59,6 +59,16 @@ export interface MailRepositoryContract {
     accountId: string,
     mailbox: string,
   ): Promise<Array<{ tag: string; count: number }>>;
+  messagesByDay(
+    accountIds: string[],
+    mailbox: string,
+    since: Date,
+  ): Promise<Array<{ date: string; count: number }>>;
+  messagesByTag(
+    accountIds: string[],
+    mailbox: string,
+    unreadOnly?: boolean,
+  ): Promise<Array<{ tag: string; count: number }>>;
   classificationCandidateUids(accountId: string, mailbox: string): Promise<number[]>;
   saveClassificationPreparations(
     accountId: string,

@@ -61,6 +61,8 @@ function repositoryMock(
     specialMailbox: async () => undefined,
     removeMessage: async () => undefined,
     tagCounts: async () => [],
+    messagesByDay: async () => [],
+    messagesByTag: async () => [],
     ...overrides,
   };
 }

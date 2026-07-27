@@ -12,6 +12,7 @@ const PAGE_SIZE = 50;
 
 export const mailKeys = {
   all: ['mail'] as const,
+  stats: (days = 30, mailbox = 'INBOX') => ['mail', 'stats', days, mailbox] as const,
   mailboxes: (accountId: string) => ['mail', accountId, 'mailboxes'] as const,
   messages: (accountId: string, mailbox: string, tag?: string | null) =>
     ['mail', accountId, 'messages', mailbox, tag ?? 'all'] as const,
@@ -71,6 +72,14 @@ export function useTagCountsQuery(accountId: string, mailbox: string) {
   return useQuery({
     queryKey: mailKeys.tags(accountId, mailbox),
     queryFn: () => api.tagCounts(accountId, mailbox),
+  });
+}
+
+export function useDashboardStatsQuery(days = 30, enabled = true) {
+  return useQuery({
+    queryKey: mailKeys.stats(days),
+    queryFn: () => api.stats(days),
+    enabled,
   });
 }
 
