@@ -38,12 +38,22 @@
     "appId": "com.squanbri.letterbox",
     "productName": "Letter Box",
     "asar": true,
+    "directories": {
+      "buildResources": "build"
+    },
+    "extraResources": [
+      {
+        "from": "build/icon.png",
+        "to": "icon.png"
+      }
+    ],
     "files": [
       "dist/**/*",
       "dist-electron/**/*",
       "package.json"
     ],
     "mac": {
+      "icon": "build/icon.icns",
       "category": "public.app-category.productivity",
       "target": [
         "dmg"

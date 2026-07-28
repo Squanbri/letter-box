@@ -1,4 +1,5 @@
 import { app, BrowserWindow, ipcMain, shell } from 'electron';
+import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { installFileLogger } from './logger';
 import { clearSession, loadSession, saveSession } from './session-store';
@@ -20,7 +21,16 @@ ipcMain.handle('session:clear', () => clearSession());
 
 let mainWindow: BrowserWindow | null = null;
 
+function resolveAppIcon(): string | undefined {
+  const candidates = [
+    join(process.resourcesPath, 'icon.png'),
+    join(__dirname, '../build/icon.png'),
+  ];
+  return candidates.find((path) => existsSync(path));
+}
+
 const createWindow = (): BrowserWindow => {
+  const icon = resolveAppIcon();
   const window = new BrowserWindow({
     width: 1180,
     height: 760,
@@ -28,6 +38,7 @@ const createWindow = (): BrowserWindow => {
     minHeight: 540,
     titleBarStyle: 'hiddenInset',
     backgroundColor: '#f4f4f1',
+    ...(icon ? { icon } : {}),
     webPreferences: {
       preload: join(__dirname, 'preload.js'),
       contextIsolation: true,

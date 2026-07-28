@@ -1,5 +1,9 @@
 # Letter Box
 
+<p align="center">
+  <img src="apps/desktop/build/icon.png" alt="Letter Box" width="128" height="128" />
+</p>
+
 Клиент-серверный почтовый клиент для macOS с self-hosted backend.
 Синхронизирует Mail.ru, Яндекс и Gmail по IMAP/SMTP, хранит почту в
 PostgreSQL и опционально размечает непрочитанные письма локальной моделью
