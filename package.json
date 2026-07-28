@@ -2,6 +2,13 @@
   "name": "letter-box",
   "version": "0.1.0",
   "private": true,
+  "description": "Self-hosted macOS email client with NestJS sync backend and optional local Ollama tagging",
+  "license": "MIT",
+  "author": "Evgeniy Markitan",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Squanbri/letter-box.git"
+  },
   "workspaces": [
     "apps/*",
     "packages/*"

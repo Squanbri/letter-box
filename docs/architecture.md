@@ -80,11 +80,20 @@ from the shared server credential volume, so it does not depend on API process
 memory. An in-process promise map still deduplicates identical calls inside one
 worker instance.
 
+## Local AI classification
+
+The sync worker optionally classifies unread messages with a local Ollama
+model (`OLLAMA_MODEL`, default `qwen3:0.6b`). Classification is best-effort:
+mail sync continues if Ollama is down or `OLLAMA_ENABLED=false`. Tags are
+stored on message rows and exposed through REST for filtering and the unified
+inbox. See [self-hosting.md](self-hosting.md) for install and model pull steps.
+
 ## Target infrastructure
 
 `compose.yaml` provisions the API server, sync worker, PostgreSQL and Redis.
-PostgreSQL is the source of truth. Redis backs the durable BullMQ queue, and can
-later host separate AI job queues.
+PostgreSQL is the source of truth. Redis backs the durable BullMQ queue.
+Ollama usually runs on the host; the worker reaches it via
+`host.docker.internal` when containers are used.
 
 REST remains the command/query transport. Socket.IO events notify all connected
 clients about synchronization progress and later about message mutations.
