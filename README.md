@@ -1,199 +1,136 @@
 # Letter Box
 
-Клиент-серверный почтовый клиент с desktop-приложением для macOS и отдельным
-сервером синхронизации Mail.ru, Яндекса и Gmail.
+Клиент-серверный почтовый клиент для macOS с self-hosted backend.
+Синхронизирует Mail.ru, Яндекс и Gmail по IMAP/SMTP, хранит почту в
+PostgreSQL и опционально размечает непрочитанные письма локальной моделью
+через [Ollama](https://ollama.com).
 
-## Архитектура
+Desktop (Electron + React) общается с NestJS по REST и Socket.IO.
+Сервер — единственный владелец IMAP-соединений, credentials и данных.
+
+## Возможности
+
+- Несколько почтовых аккаунтов с вкладками и единым inbox по непрочитанным / AI-тегам
+- Синхронизация папок: Входящие, Отправленные, Черновики, Спам, Корзина, Архив и пользовательские
+- Ленивая загрузка тела письма, постраничный scroll истории
+- Отправка, ответ, пересылка через SMTP; флаги «прочитано» / «важное», архив, перемещение, удаление
+- Фоновая sync-очередь (BullMQ + Redis), не привязанная к жизни UI
+- JWT-аутентификация с ротацией refresh-токенов
+- Локальные AI-теги для непрочитанных писем через Ollama (`qwen3:0.6b` по умолчанию)
+- Дашборд: непрочитанные, спам, динамика, теги, активность по аккаунтам
+
+## Стек
+
+| Слой | Технологии |
+| --- | --- |
+| Desktop | Electron, React 19, Vite, Mantine, TanStack Query, Socket.IO client |
+| Backend | NestJS, Prisma, PostgreSQL, Redis, BullMQ, imapflow, nodemailer |
+| AI | Ollama (локальный LLM) |
+| Contracts | `@letter-box/contracts` — общие DTO и события |
 
 ```text
-Electron + React ──REST / Socket.IO──> NestJS server
+Electron + React ──REST / Socket.IO──> NestJS API
                                           ├──> PostgreSQL
                                           ├──> Redis / BullMQ
                                           ├──> sync worker
-                                          ├──> IMAP (imapflow)
-                                          └──> SMTP (nodemailer)
+                                          ├──> IMAP / SMTP
+                                          └──> Ollama (опционально)
 ```
 
-Electron не импортирует, не запускает и не упаковывает NestJS. Сервер является
-единственным владельцем IMAP-соединений, credentials и почтовых данных. Общие
-DTO находятся в `@letter-box/contracts`. Redis координирует очередь BullMQ.
-Отдельный worker владеет длительными IMAP-задачами, поэтому закрытие desktop
-или HTTP-соединения их не отменяет. PostgreSQL — обязательный и единственный
-источник серверных данных. Схема PostgreSQL описана в
-`apps/backend/prisma/schema.prisma`. Prisma Client генерирует типизированные
-запросы. Аккаунты, пользователи, refresh-сессии, папки и письма работают через
-Prisma, включая составной ключ письма и транзакции синхронизации.
+## Требования
 
-REST API и Socket.IO защищены JWT. Каждый почтовый аккаунт принадлежит
-пользователю Letter Box, а account-oriented endpoints проверяют владельца до
-доступа к IMAP credentials или письмам. Короткая access-сессия автоматически
-обновляется ротируемым refresh token; logout отзывает текущую refresh-сессию.
+- **macOS** — для desktop-клиента
+- **Node.js 22+**
+- **Docker** — PostgreSQL и Redis (и полный server stack)
+- **Ollama** — опционально, для AI-тегов
+- Пароль приложения Mail.ru / Яндекс / Google
 
-При первой синхронизации загружаются метаданные последних 50 писем. Следующие
-запуски получают только новые UID, обновляют флаги существующих писем и удаляют
-локальные записи, которых больше нет на сервере. В PostgreSQL сохраняются UID,
-тема, отправитель, дата, флаги и размер. Тело письма запрашивается с IMAP и
-сохраняется только при первом открытии письма. Для непрочитанных писем sync
-дополнительно готовит короткий `classification_text`; sync worker периодически
-отправляет его в локальный Ollama (`qwen3:0.6b` по умолчанию, `keep_alive: 0`)
-и сохраняет AI-теги для фильтрации.
-
-## Запуск
-
-Требования:
-
-- macOS;
-- Node.js 22 или новее;
-- пароль приложения Mail.ru, Яндекса или Google.
-
-Установите зависимости:
+## Быстрый старт (локально)
 
 ```bash
+git clone https://github.com/Squanbri/letter-box.git
+cd letter-box
+cp .env.example .env
 npm install
 ```
 
-Создайте локальную конфигурацию:
+В `.env` задайте стойкие `LETTER_BOX_ENCRYPTION_KEY` и `JWT_SECRET`
+перед любым запуском вне localhost.
+
+Поднимите инфраструктуру и всё приложение:
+
+```bash
+npm run infra:up          # PostgreSQL + Redis в Docker
+npm run dev               # API + sync worker + desktop
+```
+
+Первый пользователь регистрируется в UI даже при
+`ALLOW_REGISTRATION=false`. Дальнейшая регистрация — только если
+явно разрешить.
+
+### Ollama (опционально)
+
+```bash
+# macOS: приложение с https://ollama.com
+# Linux: curl -fsSL https://ollama.com/install.sh | sh
+
+ollama pull qwen3:0.6b
+```
+
+По умолчанию worker ходит на `http://127.0.0.1:11434`.
+Чтобы отключить AI: `OLLAMA_ENABLED=false`.
+
+## Развёртывание на своём сервере
+
+Кратко:
 
 ```bash
 cp .env.example .env
+# задайте LETTER_BOX_ENCRYPTION_KEY, JWT_SECRET, API_HOST=0.0.0.0
+docker compose up -d --build
 ```
 
-Перед внешним запуском задайте разные стойкие значения
-`LETTER_BOX_ENCRYPTION_KEY` и `JWT_SECRET`. Первый пользователь может
-зарегистрироваться даже при `ALLOW_REGISTRATION=false` и автоматически получает
-существующие аккаунты без владельца. Последующая регистрация разрешается только
-при `ALLOW_REGISTRATION=true`.
-
-Запустите API, sync worker и desktop-клиент одной dev-командой:
+Desktop укажите на сервер:
 
 ```bash
-npm run dev
+LETTER_BOX_API_URL=https://mail.example.com npm run dist:mac
 ```
 
-На вкладке «Обзор» можно добавлять, переподключать и явно удалять аккаунты.
-Каждый аккаунт открывается в отдельной вкладке; открытые вкладки
-восстанавливаются после перезапуска. Закрытие вкладки не удаляет аккаунт.
-Кнопка «Обновить все» параллельно синхронизирует разные аккаунты, при этом
-повторные запросы синхронизации одного аккаунта объединяются.
-Непрочитанные письма выделяются в списке, а их количество отображается в
-«Обзоре» и на вкладках аккаунтов. При открытии письмо автоматически отмечается
-прочитанным; состояние также можно переключить вручную.
-Фоновую синхронизацию можно включать отдельно для каждого аккаунта и запускать
-каждые 5, 15 или 30 минут. После восстановления сети приложение обновляет
-аккаунты сразу. Опциональные системные уведомления показываются только для
-писем, появившихся после уже выполненной первоначальной синхронизации.
-Приложение кеширует каталог IMAP-папок и позволяет независимо открывать и
-синхронизировать «Входящие», «Отправленные», «Черновики», «Спам», «Корзину»,
-«Архив» и пользовательские папки. Выбранная папка запоминается для каждого
-аккаунта. Старые письма загружаются страницами по 50 при прокрутке списка.
-Письма можно отмечать важными, архивировать, перемещать между папками и
-удалять. Обычное удаление перемещает письмо в системную корзину, а удаление
-из самой корзины выполняется окончательно. Новые письма отправляются через
-SMTP того же провайдера; после отправки копия сохраняется в «Отправленные».
-Из просмотра письма доступны ответ и пересылка.
+Полная инструкция (Docker, Ollama, HTTPS, пароли приложений,
+чеклист безопасности): **[docs/self-hosting.md](docs/self-hosting.md)**.
 
-Сервер также можно запустить независимо:
+## Команды
 
-```bash
-npm run infra:up
-npm run dev:api -w @letter-box/server
-npm run dev:worker -w @letter-box/server
-```
-
-Для контейнерного запуска API и worker используйте `npm run server:up`.
-Количество параллельных worker-задач задаётся через
-`SYNC_WORKER_CONCURRENCY`; одинаковые `accountId + mailbox` дедуплицируются.
-
-Открыть локальную PostgreSQL в Prisma Studio:
-
-```bash
-npm run db:studio
-```
-
-После изменения `schema.prisma` обновите типизированный клиент:
-
-```bash
-npm run db:generate
-```
-
-Desktop получает адрес через `LETTER_BOX_API_URL`. Серверный bind и CORS
-настраиваются через `API_HOST` и `CORS_ORIGINS`.
-
-## macOS-установщик
-
-Соберите неподписанные `.app` и `.dmg`:
-
-```bash
-npm run dist:mac
-```
-
-Результат появится в `apps/desktop/dist/`. Такой `.dmg` подходит для локальной
-установки и тестирования. Для распространения другим пользователям потребуются
-Apple Developer ID, code signing и notarization.
-
-Backend больше не входит в Electron-приложение. Серверные credentials
-по умолчанию находятся в `./data/credentials.json`. Пароли приложений
-шифруются AES-256-GCM;
-в production переменная `LETTER_BOX_ENCRYPTION_KEY` обязательна.
-
-Диагностический лог desktop main process:
-
-```text
-~/Library/Application Support/Letter Box/logs/main.log
-```
-
-Лог автоматически ротируется после 2 МБ, предыдущая версия сохраняется рядом
-как `main.log.previous`. Пароль приложения и тела HTTP-запросов в лог не
-записываются.
-
-## REST API
-
-Все REST-маршруты имеют префикс `/api/v1`.
-
-| Метод | Путь | Назначение |
-| --- | --- | --- |
-| `GET` | `/health` или `/health/live` | Liveness API-процесса |
-| `GET` | `/health/ready` | PostgreSQL, Redis и наличие sync worker |
-| `GET` | `/accounts` | Список аккаунтов и их статусы |
-| `POST` | `/accounts` | Проверка и добавление аккаунта |
-| `PUT` | `/accounts/:accountId` | Переподключение аккаунта |
-| `DELETE` | `/accounts/:accountId` | Удаление аккаунта, credentials и локальной почты |
-| `POST` | `/accounts/:accountId/imap/connect` | Проверка IMAP-подключения |
-| `GET` | `/accounts/:accountId/mailboxes` | Локальный каталог почтовых папок |
-| `POST` | `/accounts/:accountId/mailboxes/sync` | Обновление каталога папок с IMAP |
-| `POST` | `/accounts/:accountId/mail/sync?mailbox=INBOX` | Синхронизация выбранной папки |
-| `GET` | `/accounts/:accountId/mail/sync` | Активные и ожидающие задания синхронизации |
-| `GET` | `/accounts/:accountId/messages?mailbox=INBOX` | Локальный список писем |
-| `POST` | `/accounts/:accountId/messages/send` | Отправка письма через SMTP |
-| `GET` | `/accounts/:accountId/mail/tags?mailbox=INBOX` | Счётчики AI-тегов |
-| `GET` | `/accounts/:accountId/messages/:uid?mailbox=INBOX` | Письмо с ленивой загрузкой тела |
-| `PATCH` | `/accounts/:accountId/messages/:uid/seen?mailbox=INBOX` | Изменение состояния прочитано/не прочитано |
-| `PATCH` | `/accounts/:accountId/messages/:uid/flagged?mailbox=INBOX` | Изменение флага «важное» |
-| `POST` | `/accounts/:accountId/messages/:uid/move?mailbox=INBOX` | Перемещение между папками |
-| `POST` | `/accounts/:accountId/messages/:uid/archive?mailbox=INBOX` | Архивирование письма |
-| `DELETE` | `/accounts/:accountId/messages/:uid?mailbox=INBOX` | Удаление письма |
-
-По умолчанию API слушает `127.0.0.1:3000`. Для контейнера или внешнего клиента
-можно установить `API_HOST=0.0.0.0` и ограничить `CORS_ORIGINS`.
-
-## Проверки
-
-```bash
-npm test
-npm run typecheck
-npm run build
-npm audit --omit=dev
-```
+| Команда | Назначение |
+| --- | --- |
+| `npm run infra:up` | PostgreSQL + Redis |
+| `npm run server:up` | API + worker (+ зависит от Postgres/Redis) |
+| `npm run dev` | API + worker + desktop |
+| `npm run db:studio` | Prisma Studio |
+| `npm run db:generate` | Prisma Client после смены schema |
+| `npm test` | тесты backend |
+| `npm run typecheck` | проверка типов |
+| `npm run build` | сборка server + desktop |
+| `npm run dist:mac` | `.app` / `.dmg` (без подписи Apple) |
 
 ## Структура
 
 ```text
 apps/
-  backend/   NestJS API и sync worker, PostgreSQL, Redis/BullMQ, imapflow
-  desktop/   Electron, React, Vite
+  backend/     NestJS API и sync worker
+  desktop/     Electron + React
 packages/
-  contracts/ общие DTO и события REST/Socket.IO
+  contracts/   общие DTO и Socket.IO-события
+docs/
+  architecture.md   границы runtime и модель данных
+  self-hosting.md   запуск на своём сервере + Ollama
 ```
 
-Подробное описание границ и целевой инфраструктуры:
-[`docs/architecture.md`](docs/architecture.md).
+## Документация
+
+- [Архитектура](docs/architecture.md)
+- [Self-hosting и Ollama](docs/self-hosting.md)
+
+## Лицензия
+
+[MIT](LICENSE)
