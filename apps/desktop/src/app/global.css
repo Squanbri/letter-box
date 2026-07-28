@@ -445,10 +445,10 @@ button.secondary {
   text-overflow: ellipsis;
   white-space: nowrap;
   padding: 2px 7px;
-  border: 1px solid var(--border-soft);
+  border: 1px solid color-mix(in srgb, var(--account-accent, var(--border-soft)) 35%, transparent);
   border-radius: 999px;
-  color: var(--text-muted);
-  background: rgba(255, 250, 240, .8);
+  color: var(--account-fg, var(--text-muted));
+  background: var(--account-bg, rgba(255, 250, 240, .8));
   font-size: 10px;
   line-height: 1.4;
 }
@@ -514,10 +514,15 @@ button.secondary {
   padding: 15px 18px;
   border: 0;
   border-bottom: 1px solid #e1e2de;
+  border-left: 3px solid transparent;
   text-align: left;
   color: inherit;
   background: transparent;
   cursor: pointer;
+}
+
+.message-row.has-account-color {
+  border-left-color: var(--account-accent);
 }
 
 .message-row:hover {
@@ -1443,7 +1448,11 @@ button.stat-card:not(:disabled):hover {
 }
 
 .message-row {
-  border-color: var(--border-soft);
+  border-bottom-color: var(--border-soft);
+}
+
+.message-row.has-account-color {
+  border-left-color: var(--account-accent);
 }
 
 .message-row:hover {

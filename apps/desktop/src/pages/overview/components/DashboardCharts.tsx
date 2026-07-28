@@ -3,6 +3,7 @@ import { AreaChart, BarChart, DonutChart } from '@mantine/charts';
 import { Text } from '@mantine/core';
 import { MESSAGE_TAGS } from '@letter-box/contracts';
 import type { AccountStatus, DashboardStats } from '../../../shared/api/client';
+import { accountChartColor } from '../../../shared/lib/accountColor';
 import { tagLabel } from '../../../shared/lib/format';
 import { useAuth } from '../../../state/auth/AuthProvider';
 import { useDashboardStatsQuery } from '../../../state/mail/mail';
@@ -79,22 +80,29 @@ function SpamChart({
   const other = unreadByTag
     .filter((item) => item.tag !== 'spam')
     .reduce((sum, item) => sum + item.count, 0);
+  const total = spam + other;
   const data = [
     { name: 'Спам', value: spam, color: SPAM_COLOR },
     { name: 'Остальные', value: other, color: OTHER_COLOR },
   ].filter((item) => item.value > 0);
+  const noSpamYet = !errorMessage && !loading && total > 0 && spam === 0;
 
   return (
     <ChartCard
       eyebrow="Спам"
       title="Среди непрочитанных"
-      hint={spam ? `${spam} писем` : undefined}
-      empty={Boolean(errorMessage) || (!loading && !data.length)}
-      emptyMessage={errorMessage ?? 'Пока нет данных'}
+      hint={spam ? `${spam} из ${total}` : total ? `0 из ${total}` : undefined}
+      empty={Boolean(errorMessage) || (!loading && !data.length) || noSpamYet}
+      emptyMessage={
+        errorMessage
+          ?? (noSpamYet
+            ? `Спама нет · ${other} непрочитанных с тегами`
+            : 'Пока нет данных')
+      }
     >
       <DonutChart
         data={data}
-        chartLabel={String(spam)}
+        chartLabel={`${total ? Math.round((spam / total) * 100) : 0}%`}
         size={180}
         thickness={28}
         withLabelsLine
@@ -107,36 +115,59 @@ function SpamChart({
 
 function MessagesByDayChart({
   rows,
+  byAccount,
   loading,
   errorMessage,
 }: {
   rows: DashboardStats['messagesByDay'];
+  byAccount: DashboardStats['messagesByDayByAccount'];
   loading?: boolean;
   errorMessage?: string;
 }) {
   const total = rows.reduce((sum, row) => sum + row.count, 0);
-  const data = rows.map((row) => ({
-    date: formatDayLabel(row.date),
-    count: row.count,
-  }));
+  const activeAccounts = byAccount.filter((account) =>
+    account.days.some((day) => day.count > 0));
+  const seriesAccounts = activeAccounts.length > 0 ? activeAccounts : byAccount;
+  const useAccounts = seriesAccounts.length > 1;
+
+  const data = rows.map((row, index) => {
+    const point: Record<string, string | number> = {
+      date: formatDayLabel(row.date),
+      total: row.count,
+    };
+    for (const account of seriesAccounts) {
+      point[account.accountId] = account.days[index]?.count ?? 0;
+    }
+    return point;
+  });
+
+  const series = useAccounts
+    ? seriesAccounts.map((account) => ({
+      name: account.accountId,
+      color: accountChartColor(account.accountId),
+      label: account.email,
+    }))
+    : [{ name: 'total', color: 'paperGold.6', label: 'Письма' }];
 
   return (
     <ChartCard
       eyebrow="Активность"
       title="Письма по дням"
-      hint="30 дней"
+      hint={useAccounts ? `по аккаунтам · 30 дней` : '30 дней'}
       empty={Boolean(errorMessage) || (!loading && total === 0)}
       emptyMessage={errorMessage ?? 'Пока нет данных'}
     >
       <AreaChart
-        h={220}
+        h={useAccounts ? 250 : 220}
         data={data}
         dataKey="date"
-        series={[{ name: 'count', color: 'paperGold.6', label: 'Письма' }]}
+        series={series}
+        type={useAccounts ? 'stacked' : 'default'}
         curveType="monotone"
         tickLine="y"
         gridAxis="xy"
-        withLegend={false}
+        withLegend={useAccounts}
+        legendProps={useAccounts ? { verticalAlign: 'bottom', height: 36 } : undefined}
       />
     </ChartCard>
   );
@@ -204,6 +235,7 @@ export function DashboardCharts({ accounts }: { accounts: AccountStatus[] }) {
       />
       <MessagesByDayChart
         rows={stats?.messagesByDay ?? []}
+        byAccount={stats?.messagesByDayByAccount ?? []}
         loading={loading}
         errorMessage={errorMessage}
       />

@@ -157,7 +157,8 @@ export class MailService {
     days = 30,
     mailbox = 'INBOX',
   ): Promise<DashboardStats> {
-    const accountIds = (await this.accounts.list(userId)).map(({ id }) => id);
+    const accounts = await this.accounts.list(userId);
+    const accountIds = accounts.map(({ id }) => id);
     const windowDays = Math.min(Math.max(days, 1), MAX_STATS_DAYS);
     const since = startOfUtcDay(addUtcDays(new Date(), 1 - windowDays));
     const [rawByDay, messagesByTag, unreadByTag] = await Promise.all([
@@ -165,8 +166,29 @@ export class MailService {
       this.repository.messagesByTag(accountIds, mailbox, false),
       this.repository.messagesByTag(accountIds, mailbox, true),
     ]);
+    const totals = new Map<string, number>();
+    for (const row of rawByDay) {
+      totals.set(row.date, (totals.get(row.date) ?? 0) + row.count);
+    }
+    const messagesByDay = fillDays(
+      [...totals.entries()].map(([date, count]) => ({ date, count })),
+      since,
+      windowDays,
+    );
+    const messagesByDayByAccount = accounts.map((account) => ({
+      accountId: account.id,
+      email: account.email,
+      days: fillDays(
+        rawByDay
+          .filter((row) => row.accountId === account.id)
+          .map(({ date, count }) => ({ date, count })),
+        since,
+        windowDays,
+      ),
+    }));
     return {
-      messagesByDay: fillDays(rawByDay, since, windowDays),
+      messagesByDay,
+      messagesByDayByAccount,
       messagesByTag,
       unreadByTag,
     };

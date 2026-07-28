@@ -97,11 +97,17 @@ export interface SyncStatus {
 
 export interface DashboardStats {
   messagesByDay: Array<{ date: string; count: number }>;
+  messagesByDayByAccount: Array<{
+    accountId: string;
+    email: string;
+    days: Array<{ date: string; count: number }>;
+  }>;
   messagesByTag: Array<{ tag: string; count: number }>;
   unreadByTag: Array<{ tag: string; count: number }>;
 }
 
 export const MESSAGE_TAGS = [
+  'important',
   'spam',
   'promo',
   'work',
@@ -116,6 +122,7 @@ export const MESSAGE_TAGS = [
 export type MessageTag = (typeof MESSAGE_TAGS)[number];
 
 export const MESSAGE_TAG_LABELS: Record<MessageTag, string> = {
+  important: 'Важные',
   spam: 'Спам',
   promo: 'Акции',
   work: 'Работа',

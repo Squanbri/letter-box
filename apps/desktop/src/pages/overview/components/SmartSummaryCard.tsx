@@ -31,7 +31,11 @@ export function SmartSummaryCard({
   const ranked = MESSAGE_TAGS
     .map((tag) => ({ tag, count: totals.get(tag) ?? 0 }))
     .filter((item) => item.count > 0)
-    .sort((left, right) => right.count - left.count);
+    .sort((left, right) => {
+      if (left.tag === 'important' && right.tag !== 'important') return -1;
+      if (right.tag === 'important' && left.tag !== 'important') return 1;
+      return right.count - left.count;
+    });
   const loading = queries.some((query) => query.isLoading);
 
   return (

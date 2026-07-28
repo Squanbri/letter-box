@@ -52,8 +52,8 @@ services:
       OLLAMA_URL: http://host.docker.internal:11434
       OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen3:0.6b}
       OLLAMA_ENABLED: ${OLLAMA_ENABLED:-true}
-      CLASSIFY_INTERVAL_MS: ${CLASSIFY_INTERVAL_MS:-30000}
-      CLASSIFY_BATCH_SIZE: ${CLASSIFY_BATCH_SIZE:-10}
+      CLASSIFY_INTERVAL_MS: ${CLASSIFY_INTERVAL_MS:-10000}
+      CLASSIFY_BATCH_SIZE: ${CLASSIFY_BATCH_SIZE:-20}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
