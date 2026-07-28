@@ -74,7 +74,7 @@ export interface MailRepositoryContract {
     accountIds: string[],
     mailbox: string,
     since: Date,
-  ): Promise<Array<{ date: string; count: number }>>;
+  ): Promise<Array<{ accountId: string; date: string; count: number }>>;
   messagesByTag(
     accountIds: string[],
     mailbox: string,

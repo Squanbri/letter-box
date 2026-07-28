@@ -34,7 +34,7 @@ export class OllamaService {
         prompt: buildClassificationPrompt(input),
         stream: false,
         format: 'json',
-        keep_alive: 0,
+        keep_alive: '30m',
         options: {
           temperature: 0.2,
           num_predict: 48,

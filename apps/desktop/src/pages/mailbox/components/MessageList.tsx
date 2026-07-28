@@ -1,5 +1,7 @@
+import type { CSSProperties } from 'react';
 import { Loader } from '@mantine/core';
 import type { Message } from '../../../shared/api/client';
+import { accountColor } from '../../../shared/lib/accountColor';
 import { formatDate, formatSize, isSeen, tagLabel } from '../../../shared/lib/format';
 import { EmptyState, LoadingState } from '../../../shared/ui/AsyncState';
 
@@ -24,6 +26,8 @@ export function MessageList({
   onOpen: (message: Message) => void;
   onLoadMore: () => void;
 }) {
+  const showAccountColors = Boolean(accountLabels?.size);
+
   return (
     <section
       className="message-list"
@@ -45,10 +49,24 @@ export function MessageList({
             ? selectedKey === key
             : selectedUid === message.uid;
           const accountLabel = accountLabels?.get(message.accountId);
+          const color = showAccountColors ? accountColor(message.accountId) : null;
+          const rowStyle = color
+            ? {
+              '--account-accent': color.accent,
+              '--account-bg': color.bg,
+              '--account-fg': color.fg,
+            } as CSSProperties
+            : undefined;
           return (
             <button
               key={key}
-              className={`message-row ${selected ? 'selected' : ''} ${isSeen(message) ? '' : 'unread'}`}
+              className={[
+                'message-row',
+                selected ? 'selected' : '',
+                isSeen(message) ? '' : 'unread',
+                color ? 'has-account-color' : '',
+              ].filter(Boolean).join(' ')}
+              style={rowStyle}
               onClick={() => onOpen(message)}
             >
               <div className="message-heading">

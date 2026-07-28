@@ -163,20 +163,25 @@ export class PrismaMailRepository {
     accountIds: string[],
     mailbox: string,
     since: Date,
-  ): Promise<Array<{ date: string; count: number }>> {
+  ): Promise<Array<{ accountId: string; date: string; count: number }>> {
     if (accountIds.length === 0) return [];
-    const rows = await this.database.client.$queryRaw<Array<{ date: Date; count: bigint }>>(
+    const rows = await this.database.client.$queryRaw<Array<{
+      account_id: string;
+      date: Date;
+      count: bigint;
+    }>>(
       Prisma.sql`
-        SELECT date_trunc('day', received_at)::date AS date, COUNT(*)::bigint AS count
+        SELECT account_id, date_trunc('day', received_at)::date AS date, COUNT(*)::bigint AS count
         FROM messages
         WHERE account_id IN (${Prisma.join(accountIds)})
           AND mailbox = ${mailbox}
           AND received_at >= ${since}
-        GROUP BY 1
-        ORDER BY 1
+        GROUP BY 1, 2
+        ORDER BY 1, 2
       `,
     );
     return rows.map((row) => ({
+      accountId: row.account_id,
       date: row.date instanceof Date
         ? row.date.toISOString().slice(0, 10)
         : String(row.date).slice(0, 10),

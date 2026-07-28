@@ -37,6 +37,7 @@ export function OverviewPage({
         <StatsGrid
           accounts={accounts}
           onOpenUnread={() => openUnified({ kind: 'unread' })}
+          onOpenImportant={() => openUnified({ kind: 'tag', tag: 'important' })}
         />
         <DashboardCharts accounts={accounts} />
         <div className="dashboard-grid">

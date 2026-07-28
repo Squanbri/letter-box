@@ -54,14 +54,21 @@ async function startWorker(): Promise<void> {
 
   const classifyIntervalMs = Math.max(
     Number(process.env.CLASSIFY_INTERVAL_MS ?? 300_000),
-    30_000,
+    5_000,
   );
   const runClassification = async (): Promise<void> => {
     try {
-      const classified = await classification.processBatch();
-      if (classified > 0) {
-        console.info(`[worker:classify] classified ${classified} message(s)`);
+      const boosted = await classification.applyImportantHeuristics();
+      if (boosted > 0) {
+        console.info(`[worker:classify] boosted important on ${boosted} message(s)`);
       }
+      let classified = 0;
+      do {
+        classified = await classification.processBatch();
+        if (classified > 0) {
+          console.info(`[worker:classify] classified ${classified} message(s)`);
+        }
+      } while (classified > 0);
     } catch (error) {
       console.error('[worker:classify] batch failed', error);
     }
