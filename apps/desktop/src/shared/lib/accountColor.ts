@@ -1,10 +1,10 @@
 export const ACCOUNT_COLORS = [
-  { accent: '#b48326', bg: 'rgba(180, 131, 38, .16)', fg: '#6b4d12' },
-  { accent: '#3d6b5c', bg: 'rgba(61, 107, 92, .16)', fg: '#24453b' },
-  { accent: '#4a6fa5', bg: 'rgba(74, 111, 165, .16)', fg: '#2b4468' },
-  { accent: '#a23c30', bg: 'rgba(162, 60, 48, .16)', fg: '#6e241c' },
-  { accent: '#6b5b95', bg: 'rgba(107, 91, 149, .16)', fg: '#433866' },
-  { accent: '#5c7a3d', bg: 'rgba(92, 122, 61, .16)', fg: '#374a22' },
+  { accent: '#2774e6', bg: 'rgba(39, 116, 230, .14)', fg: '#1550b0' },
+  { accent: '#d63e83', bg: 'rgba(214, 62, 131, .14)', fg: '#a02862' },
+  { accent: '#e66b18', bg: 'rgba(230, 107, 24, .14)', fg: '#b04e0e' },
+  { accent: '#7c4ddb', bg: 'rgba(124, 77, 219, .14)', fg: '#5a30b0' },
+  { accent: '#0096b7', bg: 'rgba(0, 150, 183, .14)', fg: '#006d87' },
+  { accent: '#65a30d', bg: 'rgba(101, 163, 13, .14)', fg: '#427008' },
 ] as const;
 
 export type AccountColor = (typeof ACCOUNT_COLORS)[number];

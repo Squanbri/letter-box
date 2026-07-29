@@ -1,8 +1,8 @@
 import { createTheme } from '@mantine/core';
 
 export const theme = createTheme({
-  primaryColor: 'paperGold',
-  primaryShade: { light: 7, dark: 6 },
+  primaryColor: 'brand',
+  primaryShade: { light: 6, dark: 5 },
   autoContrast: true,
   luminanceThreshold: 0.35,
   defaultRadius: 'sm',
@@ -11,17 +11,17 @@ export const theme = createTheme({
     fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Display", sans-serif',
   },
   colors: {
-    paperGold: [
-      '#fff9e8',
-      '#f8edca',
-      '#efdda5',
-      '#e5cb7e',
-      '#d8b755',
-      '#c99e32',
-      '#b48326',
-      '#95691b',
-      '#755015',
-      '#55390e',
+    brand: [
+      '#e6fff0',
+      '#ccfde0',
+      '#9af8c0',
+      '#5ef09d',
+      '#20e070',
+      '#00c750',
+      '#00a63e',
+      '#008f35',
+      '#006e29',
+      '#004d1c',
     ],
   },
 });

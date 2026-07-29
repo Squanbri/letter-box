@@ -18,6 +18,19 @@ import {
 
 const EMPTY_ACCOUNTS: AccountStatus[] = [];
 
+function useDarkMode() {
+  const [dark, setDark] = useState(() => {
+    const stored = localStorage.getItem('letter-box.theme');
+    if (stored) return stored === 'dark';
+    return window.matchMedia('(prefers-color-scheme: dark)').matches;
+  });
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
+    localStorage.setItem('letter-box.theme', dark ? 'dark' : 'light');
+  }, [dark]);
+  return [dark, setDark] as const;
+}
+
 export function AppShell() {
   const { session, logout } = useAuth();
   const accountsQuery = useAccountsQuery(Boolean(session));
@@ -28,6 +41,7 @@ export function AppShell() {
   const [error, setError] = useState<string | null>(null);
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [dragOverId, setDragOverId] = useState<string | null>(null);
+  const [dark, setDark] = useDarkMode();
 
   useEffect(() => {
     if (accountsQuery.data) {
@@ -145,7 +159,10 @@ export function AppShell() {
             </div>
           );
         })}
-        <button className="tab auth-logout" title={session.user.email} onClick={() => void logout()}>Выйти</button>
+        <div className="tabbar-end">
+          <button className="tab-theme-toggle" title={dark ? 'Светлая тема' : 'Тёмная тема'} onClick={() => setDark((d) => !d)}>{dark ? '☀︎' : '☾'}</button>
+          <button className="tab auth-logout" title={session.user.email} onClick={() => void logout()}>Выйти</button>
+        </div>
       </nav>
       {error && <div className="error-banner">{error}</div>}
       <div className={workspace.active === 'overview' ? 'tab-panel active' : 'tab-panel'}>

@@ -27,13 +27,22 @@ export function OverviewPage({
   return (
     <section className="overview">
       <header className="page-header">
-        <div><Text className="eyebrow">Рабочее пространство</Text><Title order={1}>Добрый день</Title><Text size="xs" c="dimmed">Вся почта и важные сигналы — в одном месте</Text></div>
+        <div><Text className="eyebrow">Рабочее пространство</Text><Title order={1}>Добрый день</Title></div>
         <Group className="page-actions" gap="xs">
           <Button variant="outline" loading={syncingIds.size > 0} disabled={!accounts.length} onClick={() => void syncAll()}>Обновить все</Button>
           <Button onClick={onAdd}>Добавить аккаунт</Button>
         </Group>
       </header>
       <div className="dashboard">
+        <AccountList
+          accounts={accounts}
+          disabledAccountIds={preferences.disabledAccountIds}
+          onOpen={openAccount}
+          onAdd={onAdd}
+          onReconnect={onReconnect}
+          onDelete={onDelete}
+          onAccountSync={setAccountSync}
+        />
         <StatsGrid
           accounts={accounts}
           onOpenUnread={() => openUnified({ kind: 'unread' })}
@@ -41,17 +50,8 @@ export function OverviewPage({
         />
         <DashboardCharts accounts={accounts} />
         <div className="dashboard-grid">
-          <AccountList
-            accounts={accounts}
-            disabledAccountIds={preferences.disabledAccountIds}
-            onOpen={openAccount}
-            onAdd={onAdd}
-            onReconnect={onReconnect}
-            onDelete={onDelete}
-            onAccountSync={setAccountSync}
-          />
+          <SmartSummaryCard onOpenTag={(tag) => openUnified({ kind: 'tag', tag })} />
           <aside className="dashboard-side">
-            <SmartSummaryCard onOpenTag={(tag) => openUnified({ kind: 'tag', tag })} />
             <SyncSettingsCard />
           </aside>
         </div>
