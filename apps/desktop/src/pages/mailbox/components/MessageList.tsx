@@ -77,6 +77,9 @@ export function MessageList({
                 <time>{formatDate(message.date)}</time>
               </div>
               <span className="subject">{message.flags.includes('\\Flagged') ? '★ ' : ''}{message.subject || 'Без темы'}</span>
+              {message.body?.text && (
+                <span className="message-snippet">{message.body.text.trim().replace(/\s+/g, ' ')}</span>
+              )}
               {(accountLabel || (message.tags?.length ?? 0) > 0) && (
                 <div className="message-tags">
                   {accountLabel && <span className="message-account">{accountLabel}</span>}
@@ -85,7 +88,6 @@ export function MessageList({
                   ))}
                 </div>
               )}
-              <span className="meta">{formatSize(message.size)}</span>
             </button>
           );
         })}

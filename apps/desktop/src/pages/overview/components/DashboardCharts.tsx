@@ -8,8 +8,21 @@ import { tagLabel } from '../../../shared/lib/format';
 import { useAuth } from '../../../state/auth/AuthProvider';
 import { useDashboardStatsQuery } from '../../../state/mail/mail';
 
-const SPAM_COLOR = '#a23c30';
-const OTHER_COLOR = '#b8aa87';
+const SPAM_COLOR = '#e33434';
+const OTHER_COLOR = '#00a63e';
+
+const TAG_CHART_COLORS: Record<string, string> = {
+  important: '#e33434',
+  spam:      '#e66b18',
+  promo:     '#c58a00',
+  work:      '#2774e6',
+  games:     '#7c4ddb',
+  news:      '#0096b7',
+  it:        '#65a30d',
+  personal:  '#d63e83',
+  finance:   '#00a63e',
+  other:     '#7d8780',
+};
 
 function ChartCard({
   eyebrow,
@@ -58,7 +71,7 @@ function UnreadByAccountChart({ accounts }: { accounts: AccountStatus[] }) {
         h={220}
         data={data}
         dataKey="account"
-        series={[{ name: 'count', color: 'paperGold.6', label: 'Непрочитанные' }]}
+        series={[{ name: 'count', color: '#00a63e', label: 'Непрочитанные' }]}
         tickLine="y"
         gridAxis="y"
         withLegend={false}
@@ -147,7 +160,7 @@ function MessagesByDayChart({
       color: accountChartColor(account.accountId),
       label: account.email,
     }))
-    : [{ name: 'total', color: 'paperGold.6', label: 'Письма' }];
+    : [{ name: 'total', color: '#2774e6', label: 'Письма' }];
 
   return (
     <ChartCard
@@ -183,27 +196,42 @@ function MessagesByTagChart({
   errorMessage?: string;
 }) {
   const counts = new Map(rows.map((row) => [row.tag, row.count]));
-  const data = MESSAGE_TAGS
-    .map((tag) => ({ tag: tagLabel(tag), count: counts.get(tag) ?? 0 }))
+
+  // Build one series per tag so each bar gets its own color
+  const tagEntries = MESSAGE_TAGS
+    .map((tag) => ({ tag, label: tagLabel(tag), count: counts.get(tag) ?? 0 }))
     .filter((item) => item.count > 0)
     .sort((left, right) => right.count - left.count);
+
+  // Single-row dataset: { [tagKey]: count, ... }
+  const dataRow: Record<string, string | number> = { _x: 'Теги' };
+  for (const { tag, count } of tagEntries) dataRow[tag] = count;
+
+  const series = tagEntries.map(({ tag, label }) => ({
+    name: tag,
+    label,
+    color: TAG_CHART_COLORS[tag] ?? '#7d8780',
+  }));
+
+  const empty = Boolean(errorMessage) || (!loading && tagEntries.length === 0);
 
   return (
     <ChartCard
       eyebrow="AI-теги"
       title="Письма по тегам"
       hint="все письма"
-      empty={Boolean(errorMessage) || (!loading && !data.length)}
+      empty={empty}
       emptyMessage={errorMessage ?? 'Пока нет данных'}
     >
       <BarChart
         h={220}
-        data={data}
-        dataKey="tag"
-        series={[{ name: 'count', color: 'paperGold.7', label: 'Письма' }]}
+        data={[dataRow]}
+        dataKey="_x"
+        series={series}
         tickLine="y"
         gridAxis="y"
-        withLegend={false}
+        withLegend
+        legendProps={{ verticalAlign: 'bottom', height: 36 }}
       />
     </ChartCard>
   );
@@ -227,20 +255,20 @@ export function DashboardCharts({ accounts }: { accounts: AccountStatus[] }) {
 
   return (
     <div className="charts-grid">
-      <UnreadByAccountChart accounts={accounts} />
-      <SpamChart
-        unreadByTag={stats?.unreadByTag ?? []}
-        loading={loading}
-        errorMessage={errorMessage}
-      />
       <MessagesByDayChart
         rows={stats?.messagesByDay ?? []}
         byAccount={stats?.messagesByDayByAccount ?? []}
         loading={loading}
         errorMessage={errorMessage}
       />
+      <UnreadByAccountChart accounts={accounts} />
       <MessagesByTagChart
         rows={stats?.messagesByTag ?? []}
+        loading={loading}
+        errorMessage={errorMessage}
+      />
+      <SpamChart
+        unreadByTag={stats?.unreadByTag ?? []}
         loading={loading}
         errorMessage={errorMessage}
       />

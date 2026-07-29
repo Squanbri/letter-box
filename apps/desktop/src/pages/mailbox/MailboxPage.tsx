@@ -40,6 +40,7 @@ export function MailboxPage({ account }: { account: AccountStatus }) {
   const [selectedUid, setSelectedUid] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [composeDraft, setComposeDraft] = useState<ComposeDraft | null>(null);
+  const [sidebarOpen, setSidebarOpen] = useState(true);
   const preserveSelectionRef = useRef(false);
   const mailboxesQuery = useMailboxesQuery(account.id);
   const mailboxes = mailboxesQuery.data?.length ? mailboxesQuery.data : fallbackMailboxes;
@@ -136,8 +137,17 @@ export function MailboxPage({ account }: { account: AccountStatus }) {
         </Group>
       </header>
       {visibleError && <ErrorBanner message={visibleError} />}
-      <div className="mail-layout">
-        <MailboxSidebar mailboxes={mailboxes} selected={selectedMailbox} syncing={syncingMailboxes} onSelect={setSelectedMailbox} />
+      <div className={`mail-layout${sidebarOpen ? '' : ' sidebar-collapsed'}`}>
+        {sidebarOpen && (
+          <MailboxSidebar mailboxes={mailboxes} selected={selectedMailbox} syncing={syncingMailboxes} onSelect={setSelectedMailbox} />
+        )}
+        <button
+          className="sidebar-toggle"
+          title={sidebarOpen ? 'Скрыть папки' : 'Показать папки'}
+          onClick={() => setSidebarOpen((v) => !v)}
+        >
+          {sidebarOpen ? '‹' : '›'}
+        </button>
         <div className="message-column">
           {tagCounts.length > 0 && (
             <div className="tag-filters" aria-label="Фильтр по тегам">

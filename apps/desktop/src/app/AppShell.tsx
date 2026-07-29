@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { DragEvent } from 'react';
 import { Badge, Button, Center, Loader, Text } from '@mantine/core';
+import { useDarkMode } from './darkMode';
 import type { AccountStatus } from '../shared/api/client';
 import { errorMessage, formatCount, tagLabel } from '../shared/lib/format';
 import { AccountDialog } from '../components/account-dialog/AccountDialog';
@@ -28,6 +29,7 @@ export function AppShell() {
   const [error, setError] = useState<string | null>(null);
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [dragOverId, setDragOverId] = useState<string | null>(null);
+  const { dark, setDark } = useDarkMode();
 
   useEffect(() => {
     if (accountsQuery.data) {
@@ -145,7 +147,10 @@ export function AppShell() {
             </div>
           );
         })}
-        <button className="tab auth-logout" title={session.user.email} onClick={() => void logout()}>Выйти</button>
+        <div className="tabbar-end">
+          <button className="tab-theme-toggle" title={dark ? 'Светлая тема' : 'Тёмная тема'} onClick={() => setDark((d) => !d)}>{dark ? '☀︎' : '☾'}</button>
+          <button className="tab auth-logout" title={session.user.email} onClick={() => void logout()}>Выйти</button>
+        </div>
       </nav>
       {error && <div className="error-banner">{error}</div>}
       <div className={workspace.active === 'overview' ? 'tab-panel active' : 'tab-panel'}>
