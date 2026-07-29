@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { DragEvent } from 'react';
 import { Badge, Button, Center, Loader, Text } from '@mantine/core';
+import { useDarkMode } from './darkMode';
 import type { AccountStatus } from '../shared/api/client';
 import { errorMessage, formatCount, tagLabel } from '../shared/lib/format';
 import { AccountDialog } from '../components/account-dialog/AccountDialog';
@@ -18,19 +19,6 @@ import {
 
 const EMPTY_ACCOUNTS: AccountStatus[] = [];
 
-function useDarkMode() {
-  const [dark, setDark] = useState(() => {
-    const stored = localStorage.getItem('letter-box.theme');
-    if (stored) return stored === 'dark';
-    return window.matchMedia('(prefers-color-scheme: dark)').matches;
-  });
-  useEffect(() => {
-    document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
-    localStorage.setItem('letter-box.theme', dark ? 'dark' : 'light');
-  }, [dark]);
-  return [dark, setDark] as const;
-}
-
 export function AppShell() {
   const { session, logout } = useAuth();
   const accountsQuery = useAccountsQuery(Boolean(session));
@@ -41,7 +29,7 @@ export function AppShell() {
   const [error, setError] = useState<string | null>(null);
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [dragOverId, setDragOverId] = useState<string | null>(null);
-  const [dark, setDark] = useDarkMode();
+  const { dark, setDark } = useDarkMode();
 
   useEffect(() => {
     if (accountsQuery.data) {

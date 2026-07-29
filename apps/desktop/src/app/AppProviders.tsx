@@ -8,9 +8,9 @@ import { SyncProvider } from '../state/sync/SyncProvider';
 import { WorkspaceProvider } from '../state/workspace/WorkspaceProvider';
 import { theme } from './theme';
 
-export function AppProviders({ children }: { children: ReactNode }) {
+export function AppProviders({ children, dark }: { children: ReactNode; dark: boolean }) {
   return (
-    <MantineProvider theme={theme}>
+    <MantineProvider theme={theme} forceColorScheme={dark ? 'dark' : 'light'}>
       <QueryClientProvider client={queryClient}>
         <AuthProvider>
           <WorkspaceProvider>
