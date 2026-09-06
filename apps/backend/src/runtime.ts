@@ -1,11 +1,20 @@
+import type { AccountAuthType, MailProvider } from '@letter-box/contracts';
+
 export interface AccountConfig {
   id: string;
-  provider: 'mailru' | 'yandex' | 'gmail';
+  provider: MailProvider;
   email: string;
-  password: string;
+  authType: AccountAuthType;
+  password?: string;
+  accessToken?: string;
+  refreshToken?: string;
+  expiresAt?: number;
   host: string;
   port: number;
   secure: boolean;
+  smtpHost: string;
+  smtpPort: number;
+  smtpSecure: boolean;
 }
 
 export interface CredentialStore {

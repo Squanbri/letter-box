@@ -3,7 +3,7 @@ import {
   Inject,
   Injectable,
 } from '@nestjs/common';
-import { ImapFlow, type FetchMessageObject, type ImapFlowOptions } from 'imapflow';
+import { ImapFlow, type FetchMessageObject } from 'imapflow';
 import { simpleParser } from 'mailparser';
 import {
   MailboxChanges,
@@ -16,6 +16,9 @@ import {
   parseMessageIds,
 } from './mail.types';
 import { AccountService } from '../account/account.service';
+import { TokenService } from '../account/token.service';
+import { ImapClientFactory } from './imap-client.factory';
+import type { AccountConfig } from '../runtime';
 
 const METADATA_FETCH = {
   uid: true,
@@ -27,7 +30,11 @@ const METADATA_FETCH = {
 
 @Injectable()
 export class ImapService {
-  constructor(@Inject(AccountService) private readonly accounts: AccountService) {}
+  constructor(
+    @Inject(AccountService) private readonly accounts: AccountService,
+    @Inject(TokenService) private readonly tokens: TokenService,
+    @Inject(ImapClientFactory) private readonly clients: ImapClientFactory,
+  ) {}
 
   async testConnection(accountId: string): Promise<void> {
     await this.withMailbox(accountId, 'INBOX', async () => undefined);
@@ -282,46 +289,42 @@ export class ImapService {
     accountId: string,
     operation: (client: ImapFlow) => Promise<T>,
   ): Promise<T> {
-    const client = new ImapFlow(this.options(accountId));
+    const account = await this.tokens.ensureFresh(accountId);
+    try {
+      return await this.connectAndRun(account, operation);
+    } catch (error) {
+      if (error instanceof BadGatewayException) throw error;
+      if (
+        account.authType === 'oauth'
+        && this.isAuthenticationError(error, this.errorMessage(error))
+      ) {
+        try {
+          const refreshed = await this.tokens.refresh(this.accounts.getConfig(accountId));
+          return await this.connectAndRun(refreshed, operation);
+        } catch (retryError) {
+          if (retryError instanceof BadGatewayException) throw retryError;
+          await this.accounts.setStatus(
+            accountId,
+            'needs_reauth',
+            'Требуется повторная авторизация почтового ящика',
+          );
+          throw new BadGatewayException(
+            'Сессия почтового ящика истекла. Подключите аккаунт заново.',
+          );
+        }
+      }
+      throw this.wrapImapError(accountId, error);
+    }
+  }
 
+  private async connectAndRun<T>(
+    account: AccountConfig,
+    operation: (client: ImapFlow) => Promise<T>,
+  ): Promise<T> {
+    const client = new ImapFlow(this.clients.options(account));
     try {
       await client.connect();
       return await operation(client);
-    } catch (error) {
-      if (error instanceof BadGatewayException) {
-        throw error;
-      }
-      const account = this.accounts.getConfig(accountId);
-      const message = this.errorMessage(error);
-      const diagnostics = this.errorDiagnostics(error);
-      console.warn('[backend:imap] Ошибка подключения', {
-        provider: account?.provider,
-        host: account?.host,
-        user: account ? this.maskEmail(account.email) : undefined,
-        ...diagnostics,
-      });
-
-      if (
-        account?.provider === 'yandex'
-        && this.isAuthenticationError(error, message)
-      ) {
-        throw new BadGatewayException(
-          'Яндекс отклонил вход. Проверьте, что IMAP включён в настройках Почты, '
-          + 'используется пароль приложения типа «Почта» и он уже успел активироваться.',
-        );
-      }
-
-      if (
-        account?.provider === 'gmail'
-        && this.isAuthenticationError(error, message)
-      ) {
-        throw new BadGatewayException(
-          'Google отклонил вход. Включите двухэтапную аутентификацию и '
-          + 'используйте 16-значный пароль приложения Google, а не пароль аккаунта.',
-        );
-      }
-
-      throw new BadGatewayException(`Ошибка IMAP: ${message}`);
     } finally {
       if (client.usable) {
         await client.logout().catch(() => undefined);
@@ -329,30 +332,43 @@ export class ImapService {
     }
   }
 
-  private options(accountId: string): ImapFlowOptions {
+  private wrapImapError(accountId: string, error: unknown): never {
     const account = this.accounts.getConfig(accountId);
+    const message = this.errorMessage(error);
+    console.warn('[backend:imap] Ошибка подключения', {
+      provider: account?.provider,
+      host: account?.host,
+      user: account ? this.maskEmail(account.email) : undefined,
+      ...this.errorDiagnostics(error),
+    });
 
-    return {
-      host: account.host,
-      port: account.port,
-      secure: account.secure,
-      auth: { user: this.imapUsername(account), pass: account.password },
-      logger: false,
-    };
-  }
-
-  private imapUsername(account: {
-    provider: 'mailru' | 'yandex' | 'gmail';
-    email: string;
-  }): string {
-    if (account.provider !== 'yandex') {
-      return account.email;
+    if (account.authType === 'oauth' && this.isAuthenticationError(error, message)) {
+      throw new BadGatewayException(
+        'Почтовый сервис отклонил OAuth-вход. Подключите аккаунт заново.',
+      );
     }
 
-    const [localPart, domain] = account.email.split('@');
-    return localPart && ['yandex.ru', 'ya.ru'].includes(domain?.toLowerCase())
-      ? localPart
-      : account.email;
+    if (
+      account?.provider === 'yandex'
+      && this.isAuthenticationError(error, message)
+    ) {
+      throw new BadGatewayException(
+        'Яндекс отклонил вход. Проверьте, что IMAP включён в настройках Почты, '
+        + 'используется пароль приложения типа «Почта» и он уже успел активироваться.',
+      );
+    }
+
+    if (
+      account?.provider === 'gmail'
+      && this.isAuthenticationError(error, message)
+    ) {
+      throw new BadGatewayException(
+        'Google отклонил вход. Включите двухэтапную аутентификацию и '
+        + 'используйте 16-значный пароль приложения Google, а не пароль аккаунта.',
+      );
+    }
+
+    throw new BadGatewayException(`Ошибка IMAP: ${message}`);
   }
 
   private isAuthenticationError(error: unknown, message: string): boolean {

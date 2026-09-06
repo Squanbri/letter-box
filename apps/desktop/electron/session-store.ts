@@ -18,6 +18,37 @@ export function loadSession(): string | null {
   return safeStorage.decryptString(readFileSync(path));
 }
 
+export interface DesktopAuthSession {
+  accessToken: string;
+  refreshToken: string;
+  user?: { id: string; email: string };
+}
+
+export function readAuthSession(): DesktopAuthSession | null {
+  const raw = loadSession();
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw) as DesktopAuthSession;
+    if (typeof parsed.accessToken !== 'string' || typeof parsed.refreshToken !== 'string') {
+      return null;
+    }
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+export function accessTokenNeedsRefresh(token: string, skewMs = 60_000): boolean {
+  try {
+    const payload = JSON.parse(
+      Buffer.from(token.split('.')[1] ?? '', 'base64url').toString('utf8'),
+    ) as { exp?: number };
+    return !payload.exp || payload.exp * 1000 < Date.now() + skewMs;
+  } catch {
+    return true;
+  }
+}
+
 export function saveSession(value: string): void {
   if (!safeStorage.isEncryptionAvailable()) {
     throw new Error('Системное шифрование desktop-сессии недоступно');

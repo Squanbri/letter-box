@@ -1,14 +1,175 @@
-export type MailProvider = 'mailru' | 'yandex' | 'gmail';
+export type OAuthProviderId = 'gmail' | 'yandex' | 'mailru';
+export type OAuthCapableProviderId = 'gmail' | 'yandex';
+export type MailProvider = OAuthProviderId | 'imap';
+export type AccountAuthType = 'oauth' | 'basic';
 export type AccountConnectionStatus =
   | 'connected'
   | 'disconnected'
   | 'syncing'
-  | 'error';
+  | 'error'
+  | 'needs_reauth';
 
-export interface AccountInput {
+export interface BasicAccountInput {
+  authType?: 'basic';
   provider: MailProvider;
   email: string;
   password: string;
+  imapHost?: string;
+  imapPort?: number;
+  smtpHost?: string;
+  smtpPort?: number;
+  useSSL?: boolean;
+}
+
+export interface OAuthAccountInput {
+  authType: 'oauth';
+  provider: OAuthCapableProviderId;
+  email: string;
+  accessToken: string;
+  refreshToken: string;
+  expiresAt: number;
+}
+
+export type AccountInput = BasicAccountInput | OAuthAccountInput;
+
+export type ProviderAuthMode = 'oauth-pkce' | 'oauth-manual-code' | 'basic';
+
+export interface OAuthProviderDefaults {
+  id: OAuthProviderId;
+  label: string;
+  authMode: ProviderAuthMode;
+  domainMatchers: string[];
+  authEndpoint?: string;
+  tokenEndpoint?: string;
+  userInfoEndpoint?: string;
+  userInfoMethod?: 'GET' | 'POST';
+  scope?: string;
+  extraAuthParams?: Record<string, string>;
+  redirectUri?: string;
+  imapHost: string;
+  imapPort: number;
+  smtpHost: string;
+  smtpPort: number;
+  smtpSecure: boolean;
+}
+
+export interface ResolvedOAuthProvider extends OAuthProviderDefaults {
+  clientId: string;
+  clientSecret?: string;
+  authEndpoint: string;
+  tokenEndpoint: string;
+  scope: string;
+}
+
+export const OAUTH_PROVIDERS: Record<OAuthProviderId, OAuthProviderDefaults> = {
+  gmail: {
+    id: 'gmail',
+    label: 'Gmail',
+    authMode: 'oauth-pkce',
+    domainMatchers: ['gmail.com', 'googlemail.com'],
+    authEndpoint: 'https://accounts.google.com/o/oauth2/v2/auth',
+    tokenEndpoint: 'https://oauth2.googleapis.com/token',
+    userInfoEndpoint: 'https://openidconnect.googleapis.com/v1/userinfo',
+    userInfoMethod: 'GET',
+    scope: 'https://mail.google.com/ openid email',
+    extraAuthParams: { access_type: 'offline', prompt: 'consent' },
+    imapHost: 'imap.gmail.com',
+    imapPort: 993,
+    smtpHost: 'smtp.gmail.com',
+    smtpPort: 587,
+    smtpSecure: false,
+  },
+  yandex: {
+    id: 'yandex',
+    label: 'Яндекс',
+    authMode: 'oauth-manual-code',
+    domainMatchers: [
+      'yandex.ru',
+      'ya.ru',
+      'yandex.com',
+      'yandex.by',
+      'yandex.kz',
+      'yandex.ua',
+    ],
+    authEndpoint: 'https://oauth.yandex.ru/authorize',
+    tokenEndpoint: 'https://oauth.yandex.ru/token',
+    userInfoEndpoint: 'https://login.yandex.ru/info?format=json',
+    userInfoMethod: 'GET',
+    // mail:imap_full — чтение/удаление писем; mail:smtp — отправка.
+    scope: 'mail:imap_full mail:smtp',
+    extraAuthParams: { force_confirm: 'yes' },
+    redirectUri: 'https://oauth.yandex.ru/verification_code',
+    imapHost: 'imap.yandex.ru',
+    imapPort: 993,
+    smtpHost: 'smtp.yandex.ru',
+    smtpPort: 587,
+    smtpSecure: false,
+  },
+  mailru: {
+    id: 'mailru',
+    label: 'Mail.ru',
+    authMode: 'basic',
+    domainMatchers: [
+      'mail.ru',
+      'inbox.ru',
+      'list.ru',
+      'bk.ru',
+      'internet.ru',
+      'mail.ua',
+      'inbox.ua',
+      'list.ua',
+      'bk.ua',
+    ],
+    imapHost: 'imap.mail.ru',
+    imapPort: 993,
+    smtpHost: 'smtp.mail.ru',
+    smtpPort: 587,
+    smtpSecure: false,
+  },
+};
+
+export function matchOAuthProvider(email: string): OAuthProviderId | null {
+  const domain = email.split('@')[1]?.trim().toLowerCase();
+  if (!domain) return null;
+  for (const provider of Object.values(OAUTH_PROVIDERS)) {
+    if (provider.domainMatchers.some((matcher) => domainMatches(domain, matcher))) {
+      return provider.id;
+    }
+  }
+  return null;
+}
+
+export function resolveOAuthProvider(
+  id: OAuthProviderId,
+  env: Record<string, string | undefined> = process.env,
+): ResolvedOAuthProvider {
+  const defaults = OAUTH_PROVIDERS[id];
+  if (defaults.authMode === 'basic') {
+    throw new Error('Mail.ru подключается паролем приложения, без OAuth');
+  }
+  if (!defaults.authEndpoint || !defaults.tokenEndpoint || !defaults.scope) {
+    throw new Error(`У провайдера ${id} нет OAuth-конфига`);
+  }
+  const prefix = `OAUTH_${id.toUpperCase()}`;
+  const clientId = env[`${prefix}_CLIENT_ID`]?.trim() ?? '';
+  const clientSecret = env[`${prefix}_CLIENT_SECRET`]?.trim() || undefined;
+  if (!clientId) {
+    throw new Error(
+      `Не задан ${prefix}_CLIENT_ID. Добавьте shared OAuth client в .env`,
+    );
+  }
+  return {
+    ...defaults,
+    clientId,
+    clientSecret,
+    authEndpoint: defaults.authEndpoint,
+    tokenEndpoint: defaults.tokenEndpoint,
+    scope: defaults.scope,
+  };
+}
+
+function domainMatches(domain: string, matcher: string): boolean {
+  return domain === matcher || domain.endsWith(`.${matcher}`);
 }
 
 export interface AuthCredentials {

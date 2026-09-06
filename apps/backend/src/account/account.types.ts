@@ -1,8 +1,8 @@
-import type { AccountStatus } from '@letter-box/contracts';
+import type { AccountStatus, MailProvider } from '@letter-box/contracts';
 
 export interface AccountRow {
   id: string;
-  provider: 'mailru' | 'yandex' | 'gmail';
+  provider: MailProvider;
   email: string;
   status: AccountStatus['status'];
   last_error: string | null;

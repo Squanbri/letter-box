@@ -6,9 +6,11 @@ import { AccountService } from './account/account.service';
 import { FileCredentialStore } from './account/file-credential.store';
 import { ClassificationService } from './ai/classification.service';
 import { MailService } from './mail/mail.service';
+import { TokenService } from './account/token.service';
 import { configureRuntime } from './runtime';
 import {
   SYNC_QUEUE_NAME,
+  TOKEN_REFRESH_QUEUE_NAME,
   SyncJobData,
   SyncJobResult,
 } from './sync/sync-queue.types';
@@ -23,6 +25,7 @@ async function startWorker(): Promise<void> {
   const accounts = application.get(AccountService);
   const mail = application.get(MailService);
   const classification = application.get(ClassificationService);
+  const tokens = application.get(TokenService);
   const worker = new Worker<SyncJobData, SyncJobResult>(
     SYNC_QUEUE_NAME,
     async (job) => {
@@ -51,6 +54,29 @@ async function startWorker(): Promise<void> {
   });
   await worker.waitUntilReady();
   console.info('[worker:sync] ready');
+
+  const tokenWorker = new Worker(
+    TOKEN_REFRESH_QUEUE_NAME,
+    async () => {
+      const refreshed = await tokens.refreshDue();
+      if (refreshed > 0) {
+        console.info(`[worker:oauth] refreshed ${refreshed} token(s)`);
+      }
+      return { refreshed };
+    },
+    {
+      connection: { url: redisUrl },
+      concurrency: 1,
+    },
+  );
+  tokenWorker.on('failed', (_job, error) => {
+    console.error('[worker:oauth] refresh failed', error.message);
+  });
+  tokenWorker.on('error', (error) => {
+    console.error('[worker:oauth] queue error', error);
+  });
+  await tokenWorker.waitUntilReady();
+  console.info('[worker:oauth] ready');
 
   const classifyIntervalMs = Math.max(
     Number(process.env.CLASSIFY_INTERVAL_MS ?? 300_000),
@@ -82,6 +108,7 @@ async function startWorker(): Promise<void> {
     if (stopping) return;
     stopping = true;
     clearInterval(classifyTimer);
+    await tokenWorker.close();
     await worker.close();
     await application.close();
   };

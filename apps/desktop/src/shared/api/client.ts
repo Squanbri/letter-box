@@ -16,6 +16,8 @@ import { io } from 'socket.io-client';
 
 export type {
   AccountInput,
+  BasicAccountInput,
+  OAuthAccountInput,
   AccountStatus,
   AuthSession,
   DashboardStats,
@@ -50,6 +52,10 @@ export async function loadAuthSession(): Promise<AuthSession | null> {
 export async function clearAuthSession(): Promise<void> {
   authSession = null;
   await window.letterBoxSession?.clear();
+}
+
+export function applyAuthSession(session: AuthSession): void {
+  authSession = session;
 }
 
 async function saveAuthSession(session: AuthSession): Promise<AuthSession> {

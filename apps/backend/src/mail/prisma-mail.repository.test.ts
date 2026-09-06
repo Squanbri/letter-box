@@ -75,10 +75,14 @@ function account(id: string): AccountConfig {
     id,
     provider: 'mailru',
     email: `${id}@example.com`,
+    authType: 'basic',
     password: 'secret',
     host: 'imap.mail.ru',
     port: 993,
     secure: true,
+    smtpHost: 'smtp.mail.ru',
+    smtpPort: 587,
+    smtpSecure: false,
   };
 }
 

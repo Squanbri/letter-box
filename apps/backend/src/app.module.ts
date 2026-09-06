@@ -6,6 +6,8 @@ import { ThrottlerModule } from '@nestjs/throttler';
 import { HealthController } from './health.controller';
 import { AccountController } from './account/account.controller';
 import { AccountService } from './account/account.service';
+import { TokenService } from './account/token.service';
+import { ImapClientFactory } from './mail/imap-client.factory';
 import { DiagnosticsController } from './diagnostics.controller';
 import { ImapService } from './mail/imap.service';
 import { MailController } from './mail/mail.controller';
@@ -27,6 +29,7 @@ import { PrismaAuthRepository } from './auth/prisma-auth.repository';
 import { AUTH_REPOSITORY } from './auth/auth.contract';
 import { AccountOwnershipGuard } from './auth/account-ownership.guard';
 import { SyncQueueService } from './sync/sync-queue.service';
+import { TokenRefreshQueueService } from './sync/token-refresh-queue.service';
 import { PrismaDatabaseService } from './database/prisma-database.service';
 import { OllamaService } from './ai/ollama.service';
 import { ClassificationService } from './ai/classification.service';
@@ -63,8 +66,10 @@ import { ClassificationService } from './ai/classification.service';
   ],
   providers: [
     AccountService,
+    TokenService,
     PrismaAccountRepository,
     PrismaDatabaseService,
+    ImapClientFactory,
     ImapService,
     SmtpService,
     MailService,
@@ -90,6 +95,7 @@ import { ClassificationService } from './ai/classification.service';
     },
     EventsGateway,
     SyncQueueService,
+    TokenRefreshQueueService,
     OllamaService,
     ClassificationService,
   ],

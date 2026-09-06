@@ -15,9 +15,21 @@ interface EncryptedAccount {
   host: string;
   port: number;
   secure: boolean;
+  smtpHost?: string;
+  smtpPort?: number;
+  smtpSecure?: boolean;
+  authType?: AccountConfig['authType'];
   iv: string;
   tag: string;
   ciphertext: string;
+}
+
+interface CredentialSecret {
+  authType: AccountConfig['authType'];
+  password?: string;
+  accessToken?: string;
+  refreshToken?: string;
+  expiresAt?: number;
 }
 
 export class FileCredentialStore implements CredentialStore {
@@ -38,15 +50,7 @@ export class FileCredentialStore implements CredentialStore {
   async loadAll(): Promise<AccountConfig[]> {
     try {
       const stored = JSON.parse(await readFile(this.filePath, 'utf8')) as EncryptedAccount[];
-      return stored.map((account) => ({
-        id: account.id,
-        provider: account.provider,
-        email: account.email,
-        host: account.host,
-        port: account.port,
-        secure: account.secure,
-        password: this.decrypt(account),
-      }));
+      return stored.map((account) => this.toConfig(account));
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === 'ENOENT') return [];
       throw error;
@@ -67,11 +71,38 @@ export class FileCredentialStore implements CredentialStore {
     await this.writeEncrypted(accounts.filter((account) => account.id !== accountId));
   }
 
+  private toConfig(account: EncryptedAccount): AccountConfig {
+    const secret = this.decrypt(account);
+    return {
+      id: account.id,
+      provider: account.provider,
+      email: account.email,
+      host: account.host,
+      port: account.port,
+      secure: account.secure,
+      smtpHost: account.smtpHost ?? smtpHostFor(account.provider, account.host),
+      smtpPort: account.smtpPort ?? 587,
+      smtpSecure: account.smtpSecure ?? false,
+      authType: secret.authType,
+      ...(secret.password ? { password: secret.password } : {}),
+      ...(secret.accessToken ? { accessToken: secret.accessToken } : {}),
+      ...(secret.refreshToken ? { refreshToken: secret.refreshToken } : {}),
+      ...(secret.expiresAt ? { expiresAt: secret.expiresAt } : {}),
+    };
+  }
+
   private encrypt(account: AccountConfig): EncryptedAccount {
     const iv = randomBytes(12);
     const cipher = createCipheriv('aes-256-gcm', this.key, iv);
+    const secret: CredentialSecret = {
+      authType: account.authType,
+      password: account.password,
+      accessToken: account.accessToken,
+      refreshToken: account.refreshToken,
+      expiresAt: account.expiresAt,
+    };
     const ciphertext = Buffer.concat([
-      cipher.update(account.password, 'utf8'),
+      cipher.update(JSON.stringify(secret), 'utf8'),
       cipher.final(),
     ]);
     return {
@@ -81,23 +112,28 @@ export class FileCredentialStore implements CredentialStore {
       host: account.host,
       port: account.port,
       secure: account.secure,
+      smtpHost: account.smtpHost,
+      smtpPort: account.smtpPort,
+      smtpSecure: account.smtpSecure,
+      authType: account.authType,
       iv: iv.toString('base64'),
       tag: cipher.getAuthTag().toString('base64'),
       ciphertext: ciphertext.toString('base64'),
     };
   }
 
-  private decrypt(account: EncryptedAccount): string {
+  private decrypt(account: EncryptedAccount): CredentialSecret {
     const decipher = createDecipheriv(
       'aes-256-gcm',
       this.key,
       Buffer.from(account.iv, 'base64'),
     );
     decipher.setAuthTag(Buffer.from(account.tag, 'base64'));
-    return Buffer.concat([
+    const plaintext = Buffer.concat([
       decipher.update(Buffer.from(account.ciphertext, 'base64')),
       decipher.final(),
     ]).toString('utf8');
+    return parseSecret(plaintext, account.authType);
   }
 
   private async readEncrypted(): Promise<EncryptedAccount[]> {
@@ -118,4 +154,29 @@ export class FileCredentialStore implements CredentialStore {
     });
     await rename(temporaryPath, this.filePath);
   }
+}
+
+function parseSecret(
+  plaintext: string,
+  fallbackType: AccountConfig['authType'] | undefined,
+): CredentialSecret {
+  try {
+    const parsed = JSON.parse(plaintext) as CredentialSecret;
+    if (parsed && (parsed.authType === 'oauth' || parsed.authType === 'basic')) {
+      return parsed;
+    }
+  } catch {
+    /* legacy password-only ciphertext */
+  }
+  return {
+    authType: fallbackType ?? 'basic',
+    password: plaintext,
+  };
+}
+
+function smtpHostFor(provider: AccountConfig['provider'], imapHost: string): string {
+  if (provider === 'gmail') return 'smtp.gmail.com';
+  if (provider === 'yandex') return 'smtp.yandex.ru';
+  if (provider === 'mailru') return 'smtp.mail.ru';
+  return imapHost.replace(/^imap\./i, 'smtp.');
 }

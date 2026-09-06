@@ -9,6 +9,8 @@ import nodemailer from 'nodemailer';
 import MailComposer from 'nodemailer/lib/mail-composer';
 import type SMTPTransport from 'nodemailer/lib/smtp-transport';
 import { AccountService } from '../account/account.service';
+import { TokenService } from '../account/token.service';
+import { smtpAuth } from './imap-client.factory';
 import type { AccountConfig } from '../runtime';
 
 interface SmtpEndpoint {
@@ -18,19 +20,15 @@ interface SmtpEndpoint {
   requireTLS?: boolean;
 }
 
-const SMTP_ENDPOINTS: Record<AccountConfig['provider'], SmtpEndpoint[]> = {
-  // Gmail: 465 часто режется DPI/провайдером; 587 + STARTTLS надёжнее.
+const SMTP_FALLBACKS: Partial<Record<AccountConfig['provider'], SmtpEndpoint[]>> = {
   gmail: [
-    { host: 'smtp.gmail.com', port: 587, secure: false, requireTLS: true },
     { host: 'smtp.gmail.com', port: 465, secure: true },
   ],
   yandex: [
     { host: 'smtp.yandex.ru', port: 465, secure: true },
-    { host: 'smtp.yandex.ru', port: 587, secure: false, requireTLS: true },
   ],
   mailru: [
     { host: 'smtp.mail.ru', port: 465, secure: true },
-    { host: 'smtp.mail.ru', port: 587, secure: false, requireTLS: true },
   ],
 };
 
@@ -43,10 +41,13 @@ export interface SmtpSendResult {
 
 @Injectable()
 export class SmtpService {
-  constructor(@Inject(AccountService) private readonly accounts: AccountService) {}
+  constructor(
+    @Inject(AccountService) private readonly accounts: AccountService,
+    @Inject(TokenService) private readonly tokens: TokenService,
+  ) {}
 
   async send(accountId: string, input: SendMessageInput): Promise<SmtpSendResult> {
-    const account = this.accounts.getConfig(accountId);
+    const account = await this.tokens.ensureFresh(accountId);
     const recipients = uniqueAddresses([
       ...input.to,
       ...(input.cc ?? []),
@@ -89,7 +90,7 @@ export class SmtpService {
     recipients: string[],
     raw: Buffer,
   ): Promise<SMTPTransport.SentMessageInfo> {
-    const endpoints = SMTP_ENDPOINTS[account.provider];
+    const endpoints = this.endpoints(account);
     let lastError: unknown;
     for (const endpoint of endpoints) {
       try {
@@ -135,20 +136,21 @@ export class SmtpService {
         servername: endpoint.host,
         minVersion: 'TLSv1.2',
       },
-      auth: {
-        user: this.smtpUsername(account),
-        pass: account.password,
-      },
+      auth: smtpAuth(account),
     };
     return options;
   }
 
-  private smtpUsername(account: AccountConfig): string {
-    if (account.provider !== 'yandex') return account.email;
-    const [localPart, domain] = account.email.split('@');
-    return localPart && ['yandex.ru', 'ya.ru'].includes(domain?.toLowerCase())
-      ? localPart
-      : account.email;
+  private endpoints(account: AccountConfig): SmtpEndpoint[] {
+    const primary: SmtpEndpoint = {
+      host: account.smtpHost,
+      port: account.smtpPort,
+      secure: account.smtpSecure,
+      requireTLS: !account.smtpSecure,
+    };
+    const extras = (SMTP_FALLBACKS[account.provider] ?? [])
+      .filter((item) => item.host !== primary.host || item.port !== primary.port);
+    return [primary, ...extras];
   }
 
   private errorMessage(account: AccountConfig, error: unknown): string {
@@ -162,14 +164,19 @@ export class SmtpService {
       return `Не удалось установить защищённое SMTP-соединение (${account.provider}). `
         + 'Проверьте сеть, VPN и доступ исходящих портов 465/587.';
     }
-    if (account.provider === 'yandex' && /auth|login|credential|password|парол/i.test(message)) {
-      return 'Яндекс отклонил SMTP-вход. Проверьте, что SMTP включён и используется пароль приложения.';
-    }
-    if (account.provider === 'gmail' && /auth|login|credential|password|парол/i.test(message)) {
-      return 'Google отклонил SMTP-вход. Используйте 16-значный пароль приложения Google.';
-    }
-    if (account.provider === 'mailru' && /auth|login|credential|password|парол/i.test(message)) {
-      return 'Mail.ru отклонил SMTP-вход. Проверьте пароль приложения и доступ по SMTP.';
+    if (/auth|login|credential|password|парол|invalid_grant/i.test(message)) {
+      if (account.authType === 'oauth') {
+        return 'Почтовый сервис отклонил SMTP по OAuth. Подключите аккаунт заново.';
+      }
+      if (account.provider === 'yandex') {
+        return 'Яндекс отклонил SMTP-вход. Проверьте, что SMTP включён и используется пароль приложения.';
+      }
+      if (account.provider === 'gmail') {
+        return 'Google отклонил SMTP-вход. Используйте 16-значный пароль приложения Google.';
+      }
+      if (account.provider === 'mailru') {
+        return 'Mail.ru отклонил SMTP-вход. Проверьте пароль приложения и доступ по SMTP.';
+      }
     }
     return `Ошибка SMTP: ${message}`;
   }

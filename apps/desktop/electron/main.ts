@@ -1,15 +1,25 @@
 import { app, BrowserWindow, ipcMain, shell } from 'electron';
 import { randomUUID } from 'node:crypto';
 import { existsSync } from 'node:fs';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
+import { loadEnvFiles } from './env';
 import { installFileLogger } from './logger';
+import { AccountOnboardingService } from './oauth/account-onboarding';
+import { isCancelled } from './oauth/strategies';
 import { clearSession, loadSession, saveSession } from './session-store';
+
+loadEnvFiles([
+  resolve(__dirname, '../../../.env'),
+  resolve(process.cwd(), '../../.env'),
+  resolve(process.cwd(), '.env'),
+]);
 
 app.setName('Letter Box');
 app.setPath('userData', join(app.getPath('appData'), 'Letter Box'));
 const logPath = join(app.getPath('userData'), 'logs', 'main.log');
 const apiUrl = process.env.LETTER_BOX_API_URL ?? 'http://127.0.0.1:3000';
 installFileLogger(logPath);
+const onboarding = new AccountOnboardingService(apiUrl);
 
 ipcMain.handle('session:load', () => loadSession());
 ipcMain.handle('session:save', (_event, value: unknown) => {
@@ -19,6 +29,39 @@ ipcMain.handle('session:save', (_event, value: unknown) => {
   saveSession(value);
 });
 ipcMain.handle('session:clear', () => clearSession());
+
+ipcMain.handle('account:add-oauth', async (event, input: unknown) => {
+  try {
+    return await onboarding.addOAuth(event.sender, input as { providerId: 'gmail' | 'yandex'; accountId?: string });
+  } catch (error) {
+    if (isCancelled(error)) return { cancelled: true };
+    return { error: error instanceof Error ? error.message : 'Не удалось подключить почту' };
+  }
+});
+ipcMain.handle('account:add-basic', async (event, input: unknown) => {
+  try {
+    return await onboarding.addBasic(event.sender, input as Parameters<AccountOnboardingService['addBasic']>[1]);
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : 'Не удалось подключить почту' };
+  }
+});
+ipcMain.handle('account:cancel-oauth', () => {
+  onboarding.cancel();
+});
+ipcMain.handle('account:submit-oauth-code', (_event, code: unknown) => {
+  if (typeof code !== 'string' || !code.trim()) {
+    return { error: 'Вставьте код подтверждения Яндекса' };
+  }
+  try {
+    onboarding.submitOAuthCode(code.trim());
+    return { ok: true };
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : 'Не удалось принять код' };
+  }
+});
+ipcMain.handle('account:forget-tokens', (_event, key: unknown) => {
+  if (typeof key === 'string' && key) onboarding.forget(key);
+});
 
 function windowFromEvent(event: Electron.IpcMainInvokeEvent): BrowserWindow | null {
   return BrowserWindow.fromWebContents(event.sender);
