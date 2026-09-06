@@ -13,6 +13,7 @@ import type {
   SyncResult,
   SyncStatus,
 } from '@letter-box/contracts';
+import { AccountService } from '../account/account.service';
 import {
   MAIL_REPOSITORY,
   MailRepositoryContract,
@@ -25,7 +26,12 @@ import {
   MailboxJobResult,
   SYNC_JOB,
   SYNC_QUEUE_NAME,
+  SYNC_TICK_FOLDERS_JOB,
+  SYNC_TICK_INBOX_JOB,
+  SyncJobData,
   SyncJobResult,
+  syncFolderIntervalMs,
+  syncInboxIntervalMs,
 } from './sync-queue.types';
 
 @Injectable()
@@ -37,6 +43,7 @@ export class SyncQueueService implements OnModuleInit, OnModuleDestroy {
   constructor(
     @Inject(EventsGateway) private readonly gateway: EventsGateway,
     @Inject(MAIL_REPOSITORY) private readonly mail: MailRepositoryContract,
+    @Inject(AccountService) private readonly accounts: AccountService,
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -64,6 +71,7 @@ export class SyncQueueService implements OnModuleInit, OnModuleDestroy {
       void this.publishFailed(jobId, failedReason);
     });
     await Promise.all([this.queue.waitUntilReady(), this.events.waitUntilReady()]);
+    await this.ensureSchedulerTicks();
   }
 
   async onModuleDestroy(): Promise<void> {
@@ -80,10 +88,25 @@ export class SyncQueueService implements OnModuleInit, OnModuleDestroy {
     if (!this.queue || !this.events) {
       throw new ServiceUnavailableException('Очередь синхронизации недоступна');
     }
+    await this.assertNotInBackoff(accountId);
+    const jobId = this.syncJobId(accountId, mailbox);
+    const existing = await this.queue.getJob(jobId);
+    if (existing) {
+      const state = await existing.getState();
+      if (state === 'active' || state === 'waiting' || state === 'delayed') {
+        try {
+          return await existing.waitUntilFinished(this.events, 20 * 60 * 1_000) as SyncResult;
+        } catch (error) {
+          throw new BadGatewayException(
+            error instanceof Error ? error.message : 'Неизвестная ошибка sync worker',
+          );
+        }
+      }
+    }
     const job = await this.queue.add(
       SYNC_JOB,
       { accountId, mailbox },
-      { jobId: this.syncJobId(accountId, mailbox) },
+      { jobId },
     );
     try {
       return await job.waitUntilFinished(this.events, 20 * 60 * 1_000) as SyncResult;
@@ -95,20 +118,28 @@ export class SyncQueueService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
-  /** Fire-and-forget incremental sync (used after account connect). */
+  /** Fire-and-forget incremental sync. Deduped by stable jobId per folder. */
   async enqueueSync(
     accountId: string,
     mailbox: string,
-  ): Promise<{ queued: true }> {
+  ): Promise<{ queued: boolean }> {
     if (!this.queue) {
       throw new ServiceUnavailableException('Очередь синхронизации недоступна');
     }
-    await this.queue.add(
-      SYNC_JOB,
-      { accountId, mailbox },
-      { jobId: this.syncJobId(accountId, mailbox) },
-    );
-    return { queued: true };
+    if (await this.accounts.isSyncBackoffActive(accountId)) {
+      return { queued: false };
+    }
+    try {
+      await this.queue.add(
+        SYNC_JOB,
+        { accountId, mailbox },
+        { jobId: this.syncJobId(accountId, mailbox) },
+      );
+      return { queued: true };
+    } catch (error) {
+      if (isDuplicateJobError(error)) return { queued: false };
+      throw error;
+    }
   }
 
   /**
@@ -129,12 +160,17 @@ export class SyncQueueService implements OnModuleInit, OnModuleDestroy {
         return { queued: false };
       }
     }
-    await this.queue.add(
-      BACKFILL_JOB,
-      { accountId, mailbox, force: options.force },
-      { jobId: this.backfillJobId(accountId, mailbox) },
-    );
-    return { queued: true };
+    try {
+      await this.queue.add(
+        BACKFILL_JOB,
+        { accountId, mailbox, force: options.force },
+        { jobId: this.backfillJobId(accountId, mailbox) },
+      );
+      return { queued: true };
+    } catch (error) {
+      if (isDuplicateJobError(error)) return { queued: false };
+      throw error;
+    }
   }
 
   async status(accountId: string): Promise<SyncStatus> {
@@ -149,9 +185,9 @@ export class SyncQueueService implements OnModuleInit, OnModuleDestroy {
     const syncing = new Set<string>();
     const backfilling = new Set<string>();
     for (const job of jobs) {
-      if (job.data.accountId !== accountId) continue;
+      if (!isSyncJobData(job.data) || job.data.accountId !== accountId) continue;
       if (job.name === BACKFILL_JOB) backfilling.add(job.data.mailbox);
-      else syncing.add(job.data.mailbox);
+      else if (job.name === SYNC_JOB) syncing.add(job.data.mailbox);
     }
     return {
       mailboxes: [...syncing],
@@ -164,6 +200,40 @@ export class SyncQueueService implements OnModuleInit, OnModuleDestroy {
       throw new ServiceUnavailableException('Очередь синхронизации недоступна');
     }
     return this.queue.getWorkersCount();
+  }
+
+  private async ensureSchedulerTicks(): Promise<void> {
+    if (!this.queue) return;
+    await this.queue.add(
+      SYNC_TICK_INBOX_JOB,
+      {},
+      {
+        jobId: SYNC_TICK_INBOX_JOB,
+        repeat: { every: syncInboxIntervalMs() },
+        removeOnComplete: true,
+        removeOnFail: true,
+      },
+    );
+    await this.queue.add(
+      SYNC_TICK_FOLDERS_JOB,
+      {},
+      {
+        jobId: SYNC_TICK_FOLDERS_JOB,
+        repeat: { every: syncFolderIntervalMs() },
+        removeOnComplete: true,
+        removeOnFail: true,
+      },
+    );
+  }
+
+  private async assertNotInBackoff(accountId: string): Promise<void> {
+    if (!(await this.accounts.isSyncBackoffActive(accountId))) return;
+    const remaining = await this.accounts.getSyncBackoffRemainingMs(accountId);
+    const status = await this.accounts.get(accountId).catch(() => undefined);
+    throw new ServiceUnavailableException(
+      `Синхронизация на паузе ещё ${Math.ceil(remaining / 1000)}с`
+      + (status?.lastError ? `: ${status.lastError}` : ''),
+    );
   }
 
   private connection(): { url: string } {
@@ -194,7 +264,7 @@ export class SyncQueueService implements OnModuleInit, OnModuleDestroy {
 
   private async publishStarted(jobId: string): Promise<void> {
     const job = await this.getJob(jobId);
-    if (!job) return;
+    if (!job || isSchedulerTick(job.name) || !isSyncJobData(job.data)) return;
     this.activeJobs.set(jobId, { name: job.name, data: job.data });
     if (job.name === BACKFILL_JOB) {
       this.gateway.publish({ type: 'backfill.started', ...job.data });
@@ -209,7 +279,7 @@ export class SyncQueueService implements OnModuleInit, OnModuleDestroy {
   ): Promise<void> {
     const tracked = this.activeJobs.get(jobId) ?? await this.lookupActive(jobId);
     this.activeJobs.delete(jobId);
-    if (!tracked) return;
+    if (!tracked || !isSyncJobData(tracked.data)) return;
     if (tracked.name === BACKFILL_JOB) {
       this.gateway.publish({
         type: 'backfill.completed',
@@ -228,7 +298,7 @@ export class SyncQueueService implements OnModuleInit, OnModuleDestroy {
   private async publishFailed(jobId: string, error: string): Promise<void> {
     const tracked = this.activeJobs.get(jobId) ?? await this.lookupActive(jobId);
     this.activeJobs.delete(jobId);
-    if (!tracked) return;
+    if (!tracked || !isSyncJobData(tracked.data)) return;
     if (tracked.name === BACKFILL_JOB) {
       this.gateway.publish({
         type: 'backfill.failed',
@@ -261,4 +331,20 @@ export class SyncQueueService implements OnModuleInit, OnModuleDestroy {
     if (typeof value !== 'string') return value as BackfillResult;
     return JSON.parse(value) as BackfillResult;
   }
+}
+
+function isSchedulerTick(name: string): boolean {
+  return name === SYNC_TICK_INBOX_JOB || name === SYNC_TICK_FOLDERS_JOB;
+}
+
+function isSyncJobData(data: MailboxJobData): data is SyncJobData {
+  return typeof data === 'object'
+    && data !== null
+    && 'accountId' in data
+    && 'mailbox' in data;
+}
+
+function isDuplicateJobError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return /already exists|JobId/i.test(message);
 }

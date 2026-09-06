@@ -9,12 +9,15 @@ import { MailService } from './mail/mail.service';
 import { TokenService } from './account/token.service';
 import { configureRuntime } from './runtime';
 import { SyncQueueService } from './sync/sync-queue.service';
+import { SyncSchedulerService } from './sync/sync-scheduler.service';
 import {
   BACKFILL_JOB,
   BackfillJobData,
   MailboxJobData,
   MailboxJobResult,
   SYNC_QUEUE_NAME,
+  SYNC_TICK_FOLDERS_JOB,
+  SYNC_TICK_INBOX_JOB,
   TOKEN_REFRESH_QUEUE_NAME,
   SyncJobData,
 } from './sync/sync-queue.types';
@@ -31,9 +34,17 @@ async function startWorker(): Promise<void> {
   const classification = application.get(ClassificationService);
   const tokens = application.get(TokenService);
   const syncQueue = application.get(SyncQueueService);
+  const scheduler = application.get(SyncSchedulerService);
   const worker = new Worker<MailboxJobData, MailboxJobResult>(
     SYNC_QUEUE_NAME,
     async (job) => {
+      if (job.name === SYNC_TICK_INBOX_JOB) {
+        return scheduler.tickInbox();
+      }
+      if (job.name === SYNC_TICK_FOLDERS_JOB) {
+        return scheduler.tickFolders();
+      }
+
       await accounts.reloadCredential(job.data.accountId);
       if (job.name === BACKFILL_JOB) {
         const data = job.data as BackfillJobData;
@@ -44,8 +55,9 @@ async function startWorker(): Promise<void> {
       const data = job.data as SyncJobData;
       const result = await mail.syncMailbox(data.accountId, data.mailbox);
       void classification.processBatch();
-      // After incremental catch-up, kick off one-shot history if needed.
-      void syncQueue.enqueueBackfill(data.accountId, data.mailbox).catch((error) => {
+      void syncQueue.enqueueBackfill(data.accountId, data.mailbox, {
+        force: Boolean(result.uidValidityReset),
+      }).catch((error) => {
         console.error('[worker:backfill] enqueue failed', {
           accountId: data.accountId,
           mailbox: data.mailbox,
@@ -57,7 +69,6 @@ async function startWorker(): Promise<void> {
     {
       connection: { url: redisUrl },
       concurrency: Number(process.env.SYNC_WORKER_CONCURRENCY ?? 4),
-      // History walks can outlive the default 30s lock; BullMQ renews while processing.
       lockDuration: 120_000,
     },
   );
@@ -65,8 +76,8 @@ async function startWorker(): Promise<void> {
   worker.on('failed', (job, error) => {
     console.error(`[worker:${job?.name ?? 'sync'}] job failed`, {
       jobId: job?.id,
-      accountId: job?.data.accountId,
-      mailbox: job?.data.mailbox,
+      accountId: job?.data && 'accountId' in job.data ? job.data.accountId : undefined,
+      mailbox: job?.data && 'mailbox' in job.data ? job.data.mailbox : undefined,
       attempt: job?.attemptsMade,
       error: error.message,
     });
@@ -75,7 +86,10 @@ async function startWorker(): Promise<void> {
     console.error('[worker:sync] queue error', error);
   });
   await worker.waitUntilReady();
-  console.info('[worker:sync] ready');
+  console.info('[worker:sync] ready', {
+    inboxIntervalMs: process.env.SYNC_INBOX_INTERVAL_MS ?? 60_000,
+    folderIntervalMs: process.env.SYNC_FOLDER_INTERVAL_MS ?? 300_000,
+  });
 
   const tokenWorker = new Worker(
     TOKEN_REFRESH_QUEUE_NAME,

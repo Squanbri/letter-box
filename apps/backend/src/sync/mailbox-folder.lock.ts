@@ -11,10 +11,9 @@ const LOCK_WAIT_MS = 90_000;
 const LOCK_RETRY_MS = 250;
 
 /**
- * Cross-worker mutex for one IMAP folder.
- * Sync and backfill must not run concurrently on the same (account, mailbox):
- * incremental applyChanges prunes against full server UID set and both open
- * an IMAP mailbox lock on separate connections.
+ * Cross-worker mutexes for IMAP sync.
+ * - Folder lock: sync ↔ backfill must not race the same mailbox.
+ * - Account lock: a new sync tick must not stack on an in-flight account sync.
  */
 @Injectable()
 export class MailboxFolderLock implements OnModuleDestroy {
@@ -30,13 +29,35 @@ export class MailboxFolderLock implements OnModuleDestroy {
     mailbox: string,
     run: () => Promise<T>,
   ): Promise<T> {
+    return this.withKey(this.folderKey(accountId, mailbox), run, true);
+  }
+
+  async withAccountLock<T>(
+    accountId: string,
+    run: () => Promise<T>,
+  ): Promise<T> {
+    return this.withKey(this.accountKey(accountId), run, true);
+  }
+
+  /** Non-blocking check used by the scheduler to skip in-flight accounts. */
+  async isAccountLocked(accountId: string): Promise<boolean> {
+    const value = await this.redis().get(this.accountKey(accountId));
+    return value !== null;
+  }
+
+  private async withKey<T>(
+    key: string,
+    run: () => Promise<T>,
+    wait: boolean,
+  ): Promise<T> {
     const redis = this.redis();
-    const key = this.key(accountId, mailbox);
     const token = randomUUID();
-    const acquired = await this.acquire(redis, key, token);
+    const acquired = wait
+      ? await this.acquire(redis, key, token)
+      : await this.tryAcquire(redis, key, token);
     if (!acquired) {
       throw new ServiceUnavailableException(
-        `Папка ${mailbox} уже синхронизируется`,
+        'Синхронизация аккаунта/папки уже выполняется',
       );
     }
     try {
@@ -62,8 +83,21 @@ export class MailboxFolderLock implements OnModuleDestroy {
     return this.client;
   }
 
-  private key(accountId: string, mailbox: string): string {
+  private folderKey(accountId: string, mailbox: string): string {
     return `lock:mailbox:${accountId}:${mailbox}`;
+  }
+
+  private accountKey(accountId: string): string {
+    return `lock:account-sync:${accountId}`;
+  }
+
+  private async tryAcquire(
+    redis: Redis,
+    key: string,
+    token: string,
+  ): Promise<boolean> {
+    const ok = await redis.set(key, token, 'PX', LOCK_TTL_MS, 'NX');
+    return ok === 'OK';
   }
 
   private async acquire(
@@ -73,8 +107,7 @@ export class MailboxFolderLock implements OnModuleDestroy {
   ): Promise<boolean> {
     const deadline = Date.now() + LOCK_WAIT_MS;
     while (Date.now() < deadline) {
-      const ok = await redis.set(key, token, 'PX', LOCK_TTL_MS, 'NX');
-      if (ok === 'OK') return true;
+      if (await this.tryAcquire(redis, key, token)) return true;
       await sleep(LOCK_RETRY_MS);
     }
     return false;

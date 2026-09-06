@@ -166,7 +166,7 @@ export class PrismaMailRepository {
           ...(changes.reset
             ? {
               backfilledUid: null,
-              lastSeenUid: lastSeenUid === null ? null : BigInt(lastSeenUid),
+              lastSeenUid: null,
             }
             : {}),
         },

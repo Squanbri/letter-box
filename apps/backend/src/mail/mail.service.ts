@@ -63,8 +63,10 @@ export class MailService {
     const syncKey = `${accountId}\0${mailbox}`;
     const running = this.syncs.get(syncKey);
     if (running) return running.promise;
-    const sync = this.withFolderLock(accountId, mailbox, () =>
-      this.performSync(accountId, mailbox),
+    const sync = this.withAccountLock(accountId, () =>
+      this.withFolderLock(accountId, mailbox, () =>
+        this.performSync(accountId, mailbox),
+      ),
     ).finally(() => this.syncs.delete(syncKey));
     this.syncs.set(syncKey, { mailbox, promise: sync });
     return sync;
@@ -192,12 +194,22 @@ export class MailService {
     return this.folderLock.withLock(accountId, mailbox, run);
   }
 
+  private async withAccountLock<T>(
+    accountId: string,
+    run: () => Promise<T>,
+  ): Promise<T> {
+    if (!this.folderLock) return run();
+    return this.folderLock.withAccountLock(accountId, run);
+  }
+
   private async performSync(accountId: string, mailbox: string): Promise<SyncResult> {
     await this.accounts.get(accountId);
     await this.accounts.setStatus(accountId, 'syncing');
     this.events?.publish({ type: 'sync.started', accountId, mailbox });
     try {
-      const uidValidity = await this.repository.mailboxState(accountId, mailbox);
+      const cursor = await this.repository.folderCursor(accountId, mailbox);
+      const expectedUidValidity = cursor?.uidValidity
+        ?? await this.repository.mailboxState(accountId, mailbox);
       const knownUids = await this.repository.knownUids(accountId, mailbox);
       const classificationCandidateUids =
         await this.repository.classificationCandidateUids(accountId, mailbox);
@@ -205,9 +217,18 @@ export class MailService {
         accountId,
         mailbox,
         knownUids,
-        uidValidity,
+        expectedUidValidity,
         classificationCandidateUids,
       );
+
+      if (result.reset) {
+        console.warn('[sync:uidvalidity] folder UIDVALIDITY changed; wiping local mail and re-queuing backfill', {
+          accountId,
+          mailbox,
+          previous: expectedUidValidity ?? null,
+          next: result.uidValidity,
+        });
+      }
 
       const removed = await this.repository.applyChanges(accountId, mailbox, result);
       await this.accounts.markSynced(accountId);
@@ -216,6 +237,7 @@ export class MailService {
         added: result.messages.length,
         updated: result.flagUpdates.length,
         removed,
+        uidValidityReset: result.reset,
       };
       this.events?.publish({
         type: 'sync.completed',
@@ -225,12 +247,17 @@ export class MailService {
       });
       return syncResult;
     } catch (error) {
-      await this.accounts.setStatus(accountId, 'error', this.message(error));
+      const message = this.message(error);
+      if (isConnectionOrAuthError(message)) {
+        await this.accounts.recordSyncFailure(accountId, message);
+      } else {
+        await this.accounts.setStatus(accountId, 'error', message);
+      }
       this.events?.publish({
         type: 'sync.failed',
         accountId,
         mailbox,
-        error: this.message(error),
+        error: message,
       });
       throw error;
     }
@@ -619,6 +646,11 @@ export class MailService {
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+export function isConnectionOrAuthError(message: string): boolean {
+  return /auth|credential|login|connect|ECONN|ETIMEDOUT|ENOTFOUND|EAI_AGAIN|socket|TLS|SSL|oauth|token|unauthoriz|forbidden|needs_reauth|IMAP|authentication|timed?\s*out/i
+    .test(message);
 }
 
 function optionalHeader(value: string | undefined): string | undefined {

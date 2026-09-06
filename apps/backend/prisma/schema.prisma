@@ -21,19 +21,21 @@ model User {
 }
 
 model Account {
-  id           String         @id @db.Uuid
-  userId       String?        @map("user_id") @db.Uuid
-  provider     String
-  email        String
-  status       String         @default("disconnected")
-  lastError    String?        @map("last_error")
-  lastSyncAt   DateTime?      @map("last_sync_at") @db.Timestamptz
-  createdAt    DateTime       @map("created_at") @db.Timestamptz
-  updatedAt    DateTime       @map("updated_at") @db.Timestamptz
-  user         User?          @relation(fields: [userId], references: [id], onDelete: Cascade)
-  mailboxState MailboxState[]
-  mailboxes    Mailbox[]
-  messages     Message[]
+  id               String         @id @db.Uuid
+  userId           String?        @map("user_id") @db.Uuid
+  provider         String
+  email            String
+  status           String         @default("disconnected")
+  lastError        String?        @map("last_error")
+  lastSyncAt       DateTime?      @map("last_sync_at") @db.Timestamptz
+  syncFailCount    Int            @default(0) @map("sync_fail_count")
+  syncBackoffUntil DateTime?      @map("sync_backoff_until") @db.Timestamptz
+  createdAt        DateTime       @map("created_at") @db.Timestamptz
+  updatedAt        DateTime       @map("updated_at") @db.Timestamptz
+  user             User?          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  mailboxState     MailboxState[]
+  mailboxes        Mailbox[]
+  messages         Message[]
 
   @@index([userId, createdAt], map: "idx_accounts_user_created")
   @@map("accounts")

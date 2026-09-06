@@ -233,6 +233,8 @@ export interface SyncResult {
   added: number;
   updated: number;
   removed: number;
+  /** True when IMAP UIDVALIDITY changed and local folder state was wiped. */
+  uidValidityReset?: boolean;
 }
 
 export interface BackfillResult {

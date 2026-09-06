@@ -266,4 +266,13 @@ export const postgresMigrations: PostgresMigration[] = [
         ON messages USING GIN (sender_address gin_trgm_ops);
     `,
   },
+  {
+    version: 10,
+    name: 'account sync backoff',
+    sql: `
+      ALTER TABLE accounts
+        ADD COLUMN sync_fail_count INTEGER NOT NULL DEFAULT 0,
+        ADD COLUMN sync_backoff_until TIMESTAMPTZ;
+    `,
+  },
 ];
