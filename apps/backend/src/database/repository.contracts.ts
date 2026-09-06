@@ -80,6 +80,32 @@ export interface MailRepositoryContract {
     mailbox: string,
     unreadOnly?: boolean,
   ): Promise<Array<{ tag: string; count: number }>>;
+  messagesByTagByAccount(
+    accountIds: string[],
+    mailbox: string,
+  ): Promise<Array<{
+    tag: string;
+    accountId: string;
+    count: number;
+    unreadCount: number;
+  }>>;
+  awaitingReply(
+    accountIds: string[],
+    mailbox: string,
+    limit?: number,
+  ): Promise<Array<{
+    accountId: string;
+    mailbox: string;
+    uid: number;
+    subject: string | null;
+    fromName: string | null;
+    fromAddress: string | null;
+    date: string;
+  }>>;
+  messageTotals(
+    accountIds: string[],
+    mailbox: string,
+  ): Promise<{ total: number; classified: number }>;
   classificationCandidateUids(accountId: string, mailbox: string): Promise<number[]>;
   saveClassificationPreparations(
     accountId: string,

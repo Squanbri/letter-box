@@ -137,6 +137,7 @@ export const api = {
     mailbox?: string;
     unread?: boolean;
     tag?: string;
+    accountId?: string;
     offset?: number;
     limit?: number;
   } = {}) => {
@@ -146,6 +147,7 @@ export const api = {
     params.set('limit', String(options.limit ?? 50));
     if (options.unread) params.set('unread', 'true');
     if (options.tag) params.set('tag', options.tag);
+    if (options.accountId) params.set('accountId', options.accountId);
     return request<MessageRecord[]>(`/inbox?${params}`);
   },
   addAccount: (input: AccountInput) => request<AccountStatus>('/accounts', json('POST', input)),

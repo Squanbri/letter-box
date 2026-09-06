@@ -131,9 +131,13 @@ export class MailService {
       offset?: number;
       unreadOnly?: boolean;
       tag?: string;
+      accountId?: string;
     } = {},
   ): Promise<MessageRecord[]> {
-    const accountIds = (await this.accounts.list(userId)).map(({ id }) => id);
+    const owned = await this.accounts.list(userId);
+    const accountIds = options.accountId
+      ? owned.filter((account) => account.id === options.accountId).map(({ id }) => id)
+      : owned.map(({ id }) => id);
     const rows = await this.repository.listInbox(accountIds, {
       mailbox: options.mailbox ?? 'INBOX',
       limit: Math.min(Math.max(options.limit ?? 50, 1), 100),
@@ -161,10 +165,20 @@ export class MailService {
     const accountIds = accounts.map(({ id }) => id);
     const windowDays = Math.min(Math.max(days, 1), MAX_STATS_DAYS);
     const since = startOfUtcDay(addUtcDays(new Date(), 1 - windowDays));
-    const [rawByDay, messagesByTag, unreadByTag] = await Promise.all([
+    const [
+      rawByDay,
+      messagesByTag,
+      unreadByTag,
+      tagAccountMatrix,
+      awaitingRows,
+      totalsRow,
+    ] = await Promise.all([
       this.repository.messagesByDay(accountIds, mailbox, since),
       this.repository.messagesByTag(accountIds, mailbox, false),
       this.repository.messagesByTag(accountIds, mailbox, true),
+      this.repository.messagesByTagByAccount(accountIds, mailbox),
+      this.repository.awaitingReply(accountIds, mailbox, 8),
+      this.repository.messageTotals(accountIds, mailbox),
     ]);
     const totals = new Map<string, number>();
     for (const row of rawByDay) {
@@ -186,11 +200,23 @@ export class MailService {
         windowDays,
       ),
     }));
+    const now = Date.now();
+    const awaitingReply = awaitingRows.map((row) => ({
+      ...row,
+      daysWaiting: Math.max(
+        0,
+        Math.floor((now - new Date(row.date).getTime()) / (24 * 60 * 60 * 1000)),
+      ),
+    }));
     return {
       messagesByDay,
       messagesByDayByAccount,
       messagesByTag,
       unreadByTag,
+      tagAccountMatrix,
+      awaitingReply,
+      classifiedCount: totalsRow.classified,
+      totalCount: totalsRow.total,
     };
   }
 

@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import type { MailboxRecord } from '@letter-box/contracts';
 import { Prisma } from '../generated/prisma/client';
 import { PrismaDatabaseService } from '../database/prisma-database.service';
@@ -16,7 +16,9 @@ import type {
 
 @Injectable()
 export class PrismaMailRepository {
-  constructor(private readonly database: PrismaDatabaseService) {}
+  constructor(
+    @Inject(PrismaDatabaseService) private readonly database: PrismaDatabaseService,
+  ) {}
 
   async mailboxState(accountId: string, mailbox: string): Promise<string | undefined> {
     const state = await this.database.client.mailboxState.findUnique({
@@ -210,6 +212,120 @@ export class PrismaMailRepository {
       `,
     );
     return rows.map((row) => ({ tag: row.tag, count: Number(row.count) }));
+  }
+
+  async messagesByTagByAccount(
+    accountIds: string[],
+    mailbox: string,
+  ): Promise<Array<{
+    tag: string;
+    accountId: string;
+    count: number;
+    unreadCount: number;
+  }>> {
+    if (accountIds.length === 0) return [];
+    const rows = await this.database.client.$queryRaw<Array<{
+      tag: string;
+      account_id: string;
+      count: bigint;
+      unread_count: bigint;
+    }>>(
+      Prisma.sql`
+        SELECT
+          tag,
+          account_id,
+          COUNT(*)::bigint AS count,
+          COUNT(*) FILTER (
+            WHERE NOT (flags::jsonb @> '["\\\\Seen"]'::jsonb)
+          )::bigint AS unread_count
+        FROM messages
+        CROSS JOIN LATERAL jsonb_array_elements_text(tags::jsonb) AS tag
+        WHERE account_id IN (${Prisma.join(accountIds)})
+          AND mailbox = ${mailbox}
+        GROUP BY tag, account_id
+        ORDER BY tag ASC, account_id ASC
+      `,
+    );
+    return rows.map((row) => ({
+      tag: row.tag,
+      accountId: row.account_id,
+      count: Number(row.count),
+      unreadCount: Number(row.unread_count),
+    }));
+  }
+
+  async awaitingReply(
+    accountIds: string[],
+    mailbox: string,
+    limit = 8,
+  ): Promise<Array<{
+    accountId: string;
+    mailbox: string;
+    uid: number;
+    subject: string | null;
+    fromName: string | null;
+    fromAddress: string | null;
+    date: string;
+  }>> {
+    if (accountIds.length === 0) return [];
+    const rows = await this.database.client.$queryRaw<Array<{
+      account_id: string;
+      mailbox: string;
+      uid: bigint;
+      subject: string | null;
+      sender_name: string | null;
+      sender_address: string | null;
+      received_at: Date;
+    }>>(
+      Prisma.sql`
+        SELECT account_id, mailbox, uid, subject, sender_name, sender_address, received_at
+        FROM messages
+        WHERE account_id IN (${Prisma.join(accountIds)})
+          AND mailbox = ${mailbox}
+          AND flags::jsonb @> '["\\\\Seen"]'::jsonb
+          AND NOT (flags::jsonb @> '["\\\\Answered"]'::jsonb)
+          AND NOT (flags::jsonb @> '["\\\\Draft"]'::jsonb)
+        ORDER BY received_at ASC
+        LIMIT ${limit}
+      `,
+    );
+    return rows.map((row) => ({
+      accountId: row.account_id,
+      mailbox: row.mailbox,
+      uid: Number(row.uid),
+      subject: row.subject,
+      fromName: row.sender_name,
+      fromAddress: row.sender_address,
+      date: row.received_at.toISOString(),
+    }));
+  }
+
+  async messageTotals(
+    accountIds: string[],
+    mailbox: string,
+  ): Promise<{ total: number; classified: number }> {
+    if (accountIds.length === 0) return { total: 0, classified: 0 };
+    const rows = await this.database.client.$queryRaw<Array<{
+      total: bigint;
+      classified: bigint;
+    }>>(
+      Prisma.sql`
+        SELECT
+          COUNT(*)::bigint AS total,
+          COUNT(*) FILTER (
+            WHERE classification_status = 'done'
+              OR jsonb_array_length(COALESCE(tags::jsonb, '[]'::jsonb)) > 0
+          )::bigint AS classified
+        FROM messages
+        WHERE account_id IN (${Prisma.join(accountIds)})
+          AND mailbox = ${mailbox}
+      `,
+    );
+    const row = rows[0];
+    return {
+      total: Number(row?.total ?? 0),
+      classified: Number(row?.classified ?? 0),
+    };
   }
 
   async listMailboxes(accountId: string): Promise<MailboxRecord[]> {

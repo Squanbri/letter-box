@@ -1,4 +1,4 @@
-import { Injectable, Logger, Optional } from '@nestjs/common';
+import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import { PrismaDatabaseService } from '../database/prisma-database.service';
 import { EventsGateway } from '../events/events.gateway';
 import { OllamaService } from './ollama.service';
@@ -13,9 +13,9 @@ export class ClassificationService {
   private running = false;
 
   constructor(
-    private readonly database: PrismaDatabaseService,
-    private readonly ollama: OllamaService,
-    @Optional() private readonly events?: EventsGateway,
+    @Inject(PrismaDatabaseService) private readonly database: PrismaDatabaseService,
+    @Inject(OllamaService) private readonly ollama: OllamaService,
+    @Optional() @Inject(EventsGateway) private readonly events?: EventsGateway,
   ) {}
 
   async processBatch(): Promise<number> {

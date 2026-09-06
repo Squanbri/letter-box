@@ -65,6 +65,9 @@ function repositoryMock(
     tagCounts: async () => [],
     messagesByDay: async () => [],
     messagesByTag: async () => [],
+    messagesByTagByAccount: async () => [],
+    awaitingReply: async () => [],
+    messageTotals: async () => ({ total: 0, classified: 0 }),
     ...overrides,
   };
 }

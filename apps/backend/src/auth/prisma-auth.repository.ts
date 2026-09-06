@@ -1,11 +1,13 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import type { AuthUser } from '@letter-box/contracts';
 import { PrismaDatabaseService } from '../database/prisma-database.service';
 import type { RegistrationResult, StoredUser } from './auth.contract';
 
 @Injectable()
 export class PrismaAuthRepository {
-  constructor(private readonly database: PrismaDatabaseService) {}
+  constructor(
+    @Inject(PrismaDatabaseService) private readonly database: PrismaDatabaseService,
+  ) {}
 
   count(): Promise<number> {
     return this.database.client.user.count();

@@ -1,5 +1,6 @@
 import {
   BadGatewayException,
+  Inject,
   Injectable,
   OnModuleDestroy,
   OnModuleInit,
@@ -21,7 +22,9 @@ export class SyncQueueService implements OnModuleInit, OnModuleDestroy {
   private events?: QueueEvents;
   private readonly activeJobs = new Map<string, SyncJobData>();
 
-  constructor(private readonly gateway: EventsGateway) {}
+  constructor(
+    @Inject(EventsGateway) private readonly gateway: EventsGateway,
+  ) {}
 
   async onModuleInit(): Promise<void> {
     const connection = this.connection();

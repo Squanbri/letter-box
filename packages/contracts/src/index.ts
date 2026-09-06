@@ -95,6 +95,24 @@ export interface SyncStatus {
   mailboxes: string[];
 }
 
+export interface TagAccountCount {
+  tag: string;
+  accountId: string;
+  count: number;
+  unreadCount: number;
+}
+
+export interface AwaitingReplyItem {
+  accountId: string;
+  mailbox: string;
+  uid: number;
+  subject: string | null;
+  fromName: string | null;
+  fromAddress: string | null;
+  date: string;
+  daysWaiting: number;
+}
+
 export interface DashboardStats {
   messagesByDay: Array<{ date: string; count: number }>;
   messagesByDayByAccount: Array<{
@@ -104,6 +122,11 @@ export interface DashboardStats {
   }>;
   messagesByTag: Array<{ tag: string; count: number }>;
   unreadByTag: Array<{ tag: string; count: number }>;
+  /** Matrix cells for tag × account on the dashboard. */
+  tagAccountMatrix: TagAccountCount[];
+  awaitingReply: AwaitingReplyItem[];
+  classifiedCount: number;
+  totalCount: number;
 }
 
 export const MESSAGE_TAGS = [

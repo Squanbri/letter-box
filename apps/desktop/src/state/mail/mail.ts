@@ -13,8 +13,21 @@ const PAGE_SIZE = 50;
 export const mailKeys = {
   all: ['mail'] as const,
   stats: (days = 30, mailbox = 'INBOX') => ['mail', 'stats', days, mailbox] as const,
-  inbox: (filter: { unread?: boolean; tag?: string | null; mailbox?: string }) =>
-    ['mail', 'inbox', 'v2', filter.mailbox ?? 'INBOX', filter.unread ? 'unread' : 'all', filter.tag ?? 'all'] as const,
+  inbox: (filter: {
+    unread?: boolean;
+    tag?: string | null;
+    mailbox?: string;
+    accountId?: string | null;
+  }) =>
+    [
+      'mail',
+      'inbox',
+      'v3',
+      filter.mailbox ?? 'INBOX',
+      filter.unread ? 'unread' : 'all',
+      filter.tag ?? 'all',
+      filter.accountId ?? 'all',
+    ] as const,
   mailboxes: (accountId: string) => ['mail', accountId, 'mailboxes'] as const,
   messages: (accountId: string, mailbox: string, tag?: string | null) =>
     ['mail', accountId, 'messages', mailbox, tag ?? 'all'] as const,
@@ -79,7 +92,7 @@ export function useTagCountsQuery(accountId: string, mailbox: string) {
   });
 }
 
-export function useDashboardStatsQuery(days = 30, enabled = true) {
+export function useDashboardStatsQuery(days = 14, enabled = true) {
   return useQuery({
     queryKey: mailKeys.stats(days),
     queryFn: () => api.stats(days),
@@ -91,6 +104,7 @@ export function useInboxQuery(filter: {
   unread?: boolean;
   tag?: string | null;
   mailbox?: string;
+  accountId?: string | null;
 }, enabled = true) {
   return useInfiniteQuery({
     queryKey: mailKeys.inbox(filter),
@@ -99,6 +113,7 @@ export function useInboxQuery(filter: {
       mailbox: filter.mailbox ?? 'INBOX',
       unread: filter.unread,
       tag: filter.tag ?? undefined,
+      accountId: filter.accountId ?? undefined,
       offset: pageParam,
       limit: PAGE_SIZE,
     }),
