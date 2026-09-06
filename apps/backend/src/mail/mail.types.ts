@@ -22,7 +22,12 @@ export interface MessageFlags {
   flags: string[];
 }
 
-export type ClassificationStatus = 'pending' | 'processing' | 'completed' | 'failed';
+export type ClassificationStatus =
+  | 'pending'
+  | 'processing'
+  | 'tagged'
+  | 'completed'
+  | 'failed';
 
 export interface ClassificationPreparation {
   uid: number;

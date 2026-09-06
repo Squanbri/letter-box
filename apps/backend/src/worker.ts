@@ -8,11 +8,26 @@ import { ClassificationService } from './ai/classification.service';
 import { MailService } from './mail/mail.service';
 import { TokenService } from './account/token.service';
 import { configureRuntime } from './runtime';
+import { SyncQueueService } from './sync/sync-queue.service';
+import { SyncSchedulerService } from './sync/sync-scheduler.service';
 import {
+  TAG_MESSAGE_JOB,
+  TAG_SWEEP_JOB,
+  TAGGING_QUEUE_NAME,
+  type TagMessageJobData,
+  type TaggingJobData,
+  type TaggingJobResult,
+} from './ai/tagging-queue.types';
+import {
+  BACKFILL_JOB,
+  BackfillJobData,
+  MailboxJobData,
+  MailboxJobResult,
   SYNC_QUEUE_NAME,
+  SYNC_TICK_FOLDERS_JOB,
+  SYNC_TICK_INBOX_JOB,
   TOKEN_REFRESH_QUEUE_NAME,
   SyncJobData,
-  SyncJobResult,
 } from './sync/sync-queue.types';
 
 async function startWorker(): Promise<void> {
@@ -26,25 +41,50 @@ async function startWorker(): Promise<void> {
   const mail = application.get(MailService);
   const classification = application.get(ClassificationService);
   const tokens = application.get(TokenService);
-  const worker = new Worker<SyncJobData, SyncJobResult>(
+  const syncQueue = application.get(SyncQueueService);
+  const scheduler = application.get(SyncSchedulerService);
+  const worker = new Worker<MailboxJobData, MailboxJobResult>(
     SYNC_QUEUE_NAME,
     async (job) => {
+      if (job.name === SYNC_TICK_INBOX_JOB) {
+        return scheduler.tickInbox();
+      }
+      if (job.name === SYNC_TICK_FOLDERS_JOB) {
+        return scheduler.tickFolders();
+      }
+
       await accounts.reloadCredential(job.data.accountId);
-      const result = await mail.syncMailbox(job.data.accountId, job.data.mailbox);
-      void classification.processBatch();
+      if (job.name === BACKFILL_JOB) {
+        const data = job.data as BackfillJobData;
+        return mail.backfillMailbox(data.accountId, data.mailbox, {
+          force: data.force,
+        });
+      }
+      const data = job.data as SyncJobData;
+      const result = await mail.syncMailbox(data.accountId, data.mailbox);
+      void syncQueue.enqueueBackfill(data.accountId, data.mailbox, {
+        force: Boolean(result.uidValidityReset),
+      }).catch((error) => {
+        console.error('[worker:backfill] enqueue failed', {
+          accountId: data.accountId,
+          mailbox: data.mailbox,
+          error: error instanceof Error ? error.message : error,
+        });
+      });
       return result;
     },
     {
       connection: { url: redisUrl },
       concurrency: Number(process.env.SYNC_WORKER_CONCURRENCY ?? 4),
+      lockDuration: 120_000,
     },
   );
 
   worker.on('failed', (job, error) => {
-    console.error('[worker:sync] job failed', {
+    console.error(`[worker:${job?.name ?? 'sync'}] job failed`, {
       jobId: job?.id,
-      accountId: job?.data.accountId,
-      mailbox: job?.data.mailbox,
+      accountId: job?.data && 'accountId' in job.data ? job.data.accountId : undefined,
+      mailbox: job?.data && 'mailbox' in job.data ? job.data.mailbox : undefined,
       attempt: job?.attemptsMade,
       error: error.message,
     });
@@ -53,7 +93,51 @@ async function startWorker(): Promise<void> {
     console.error('[worker:sync] queue error', error);
   });
   await worker.waitUntilReady();
-  console.info('[worker:sync] ready');
+  console.info('[worker:sync] ready', {
+    inboxIntervalMs: process.env.SYNC_INBOX_INTERVAL_MS ?? 60_000,
+    folderIntervalMs: process.env.SYNC_FOLDER_INTERVAL_MS ?? 300_000,
+  });
+
+  const taggingWorker = new Worker<TaggingJobData, TaggingJobResult>(
+    TAGGING_QUEUE_NAME,
+    async (job) => {
+      if (job.name === TAG_SWEEP_JOB) {
+        const boosted = await classification.applyImportantHeuristics();
+        if (boosted > 0) {
+          console.info(`[worker:tag] boosted important on ${boosted} message(s)`);
+        }
+        const enqueued = await classification.enqueuePendingSweep();
+        if (enqueued > 0) {
+          console.info(`[worker:tag] sweep enqueued ${enqueued} pending message(s)`);
+        }
+        return { enqueued };
+      }
+      const data = job.data as TagMessageJobData;
+      return classification.tagMessage(data);
+    },
+    {
+      connection: { url: redisUrl },
+      // Ollama does not parallelize well on a single local model.
+      concurrency: 1,
+      lockDuration: 300_000,
+    },
+  );
+  taggingWorker.on('failed', (job, error) => {
+    console.error('[worker:tag] job failed', {
+      jobId: job?.id,
+      name: job?.name,
+      attempt: job?.attemptsMade,
+      error: error.message,
+    });
+  });
+  taggingWorker.on('error', (error) => {
+    console.error('[worker:tag] queue error', error);
+  });
+  await taggingWorker.waitUntilReady();
+  console.info('[worker:tag] ready', {
+    model: process.env.OLLAMA_MODEL ?? 'qwen2.5:7b',
+    concurrency: 1,
+  });
 
   const tokenWorker = new Worker(
     TOKEN_REFRESH_QUEUE_NAME,
@@ -78,36 +162,11 @@ async function startWorker(): Promise<void> {
   await tokenWorker.waitUntilReady();
   console.info('[worker:oauth] ready');
 
-  const classifyIntervalMs = Math.max(
-    Number(process.env.CLASSIFY_INTERVAL_MS ?? 300_000),
-    5_000,
-  );
-  const runClassification = async (): Promise<void> => {
-    try {
-      const boosted = await classification.applyImportantHeuristics();
-      if (boosted > 0) {
-        console.info(`[worker:classify] boosted important on ${boosted} message(s)`);
-      }
-      let classified = 0;
-      do {
-        classified = await classification.processBatch();
-        if (classified > 0) {
-          console.info(`[worker:classify] classified ${classified} message(s)`);
-        }
-      } while (classified > 0);
-    } catch (error) {
-      console.error('[worker:classify] batch failed', error);
-    }
-  };
-  void runClassification();
-  const classifyTimer = setInterval(() => void runClassification(), classifyIntervalMs);
-  classifyTimer.unref();
-
   let stopping = false;
   const shutdown = async (): Promise<void> => {
     if (stopping) return;
     stopping = true;
-    clearInterval(classifyTimer);
+    await taggingWorker.close();
     await tokenWorker.close();
     await worker.close();
     await application.close();

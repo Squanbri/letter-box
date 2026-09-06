@@ -29,10 +29,13 @@ import { PrismaAuthRepository } from './auth/prisma-auth.repository';
 import { AUTH_REPOSITORY } from './auth/auth.contract';
 import { AccountOwnershipGuard } from './auth/account-ownership.guard';
 import { SyncQueueService } from './sync/sync-queue.service';
+import { MailboxFolderLock } from './sync/mailbox-folder.lock';
+import { SyncSchedulerService } from './sync/sync-scheduler.service';
 import { TokenRefreshQueueService } from './sync/token-refresh-queue.service';
 import { PrismaDatabaseService } from './database/prisma-database.service';
 import { OllamaService } from './ai/ollama.service';
 import { ClassificationService } from './ai/classification.service';
+import { TaggingQueueService } from './ai/tagging-queue.service';
 
 @Module({
   imports: [
@@ -95,9 +98,12 @@ import { ClassificationService } from './ai/classification.service';
     },
     EventsGateway,
     SyncQueueService,
+    MailboxFolderLock,
+    SyncSchedulerService,
     TokenRefreshQueueService,
     OllamaService,
     ClassificationService,
+    TaggingQueueService,
   ],
 })
 export class AppModule {}

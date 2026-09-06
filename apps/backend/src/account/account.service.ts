@@ -19,6 +19,10 @@ import {
   ACCOUNT_REPOSITORY,
   AccountRepositoryContract,
 } from '../database/repository.contracts';
+import {
+  syncBackoffBaseMs,
+  syncBackoffMaxMs,
+} from '../sync/sync-queue.types';
 
 export type SaveAccountInput = AccountInput;
 export type AccountStatus = ContractAccountStatus;
@@ -48,6 +52,10 @@ export class AccountService implements OnModuleInit {
     return (await this.repository.list(userId)).map(this.mapStatus);
   }
 
+  async listAll(): Promise<AccountStatus[]> {
+    return (await this.repository.listAll()).map(this.mapStatus);
+  }
+
   async get(accountId: string, userId: string | null = null): Promise<AccountStatus> {
     const row = await this.repository.find(userId, accountId);
     if (!row) throw new NotFoundException('Аккаунт не найден');
@@ -62,6 +70,10 @@ export class AccountService implements OnModuleInit {
 
   listConfigs(): AccountConfig[] {
     return [...this.credentials.values()];
+  }
+
+  hasCredentials(accountId: string): boolean {
+    return this.credentials.has(accountId);
   }
 
   async reloadCredential(accountId: string): Promise<void> {
@@ -106,6 +118,47 @@ export class AccountService implements OnModuleInit {
   async markSynced(accountId: string): Promise<void> {
     const now = new Date().toISOString();
     await this.repository.markSynced(accountId, now);
+  }
+
+  async isSyncBackoffActive(accountId: string): Promise<boolean> {
+    const state = await this.repository.getSyncBackoff(accountId);
+    if (!state?.backoffUntil) return false;
+    return Date.parse(state.backoffUntil) > Date.now();
+  }
+
+  async getSyncBackoffRemainingMs(accountId: string): Promise<number> {
+    const state = await this.repository.getSyncBackoff(accountId);
+    if (!state?.backoffUntil) return 0;
+    return Math.max(0, Date.parse(state.backoffUntil) - Date.now());
+  }
+
+  /**
+   * Exponential backoff for connection/auth failures.
+   * delay = min(max, base * 2^(failCount-1))
+   */
+  async recordSyncFailure(accountId: string, error: string): Promise<void> {
+    const now = new Date();
+    const previous = await this.repository.getSyncBackoff(accountId);
+    const failCount = (previous?.failCount ?? 0) + 1;
+    const delay = Math.min(
+      syncBackoffMaxMs(),
+      syncBackoffBaseMs() * (2 ** Math.max(failCount - 1, 0)),
+    );
+    const backoffUntil = new Date(now.getTime() + delay).toISOString();
+    await this.repository.recordSyncFailure(
+      accountId,
+      error,
+      backoffUntil,
+      failCount,
+      now.toISOString(),
+    );
+    console.warn('[sync:backoff]', {
+      accountId,
+      failCount,
+      delayMs: delay,
+      backoffUntil,
+      error,
+    });
   }
 
   async remove(accountId: string, userId: string | null = null): Promise<void> {

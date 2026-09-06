@@ -45,6 +45,14 @@ export class PrismaAccountRepository {
     return rows.map((row) => this.mapRow(row));
   }
 
+  async listAll(): Promise<AccountRow[]> {
+    const rows = await this.database.client.account.findMany({
+      orderBy: { createdAt: 'asc' },
+      ...this.statusSelection(),
+    });
+    return rows.map((row) => this.mapRow(row));
+  }
+
   async find(userId: string | null, accountId: string): Promise<AccountRow | undefined> {
     const row = await this.database.client.account.findFirst({
       where: {
@@ -79,6 +87,8 @@ export class PrismaAccountRepository {
         email: account.email,
         status: 'connected',
         lastError: null,
+        syncFailCount: 0,
+        syncBackoffUntil: null,
         updatedAt: timestamp,
       },
     });
@@ -108,9 +118,55 @@ export class PrismaAccountRepository {
         status: 'connected',
         lastError: null,
         lastSyncAt: timestamp,
+        syncFailCount: 0,
+        syncBackoffUntil: null,
         updatedAt: timestamp,
       },
     });
+  }
+
+  async recordSyncFailure(
+    accountId: string,
+    error: string,
+    backoffUntil: string,
+    failCount: number,
+    now: string,
+  ): Promise<void> {
+    await this.database.client.account.updateMany({
+      where: { id: accountId },
+      data: {
+        status: 'error',
+        lastError: error,
+        syncFailCount: failCount,
+        syncBackoffUntil: new Date(backoffUntil),
+        updatedAt: new Date(now),
+      },
+    });
+  }
+
+  async clearSyncBackoff(accountId: string, now: string): Promise<void> {
+    await this.database.client.account.updateMany({
+      where: { id: accountId },
+      data: {
+        syncFailCount: 0,
+        syncBackoffUntil: null,
+        updatedAt: new Date(now),
+      },
+    });
+  }
+
+  async getSyncBackoff(
+    accountId: string,
+  ): Promise<{ failCount: number; backoffUntil: string | null } | undefined> {
+    const row = await this.database.client.account.findUnique({
+      where: { id: accountId },
+      select: { syncFailCount: true, syncBackoffUntil: true },
+    });
+    if (!row) return undefined;
+    return {
+      failCount: row.syncFailCount,
+      backoffUntil: row.syncBackoffUntil?.toISOString() ?? null,
+    };
   }
 
   async remove(userId: string | null, accountId: string): Promise<void> {

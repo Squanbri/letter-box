@@ -183,4 +183,96 @@ export const postgresMigrations: PostgresMigration[] = [
       CHECK (status IN ('disconnected', 'connected', 'syncing', 'error', 'needs_reauth'));
     `,
   },
+  {
+    version: 9,
+    name: 'full email storage, attachments, and search',
+    sql: `
+      CREATE EXTENSION IF NOT EXISTS pg_trgm;
+
+      ALTER TABLE mailboxes
+        ADD COLUMN uid_validity TEXT,
+        ADD COLUMN last_seen_uid BIGINT,
+        ADD COLUMN backfilled_uid BIGINT;
+
+      UPDATE mailboxes AS mailbox
+      SET uid_validity = state.uid_validity
+      FROM mailbox_state AS state
+      WHERE state.account_id = mailbox.account_id
+        AND state.mailbox = mailbox.path;
+
+      ALTER TABLE messages
+        RENAME COLUMN classification_status TO tag_status;
+      ALTER TABLE messages
+        RENAME COLUMN classified_at TO tagged_at;
+
+      ALTER TABLE messages
+        DROP CONSTRAINT IF EXISTS messages_classification_status_check;
+
+      ALTER TABLE messages
+        ADD COLUMN tag_attempts INTEGER NOT NULL DEFAULT 0,
+        ADD CONSTRAINT messages_tag_status_check
+          -- "completed" kept for current classification writers; cut over to "tagged" with the queue.
+          CHECK (tag_status IN ('pending', 'processing', 'tagged', 'failed', 'completed'));
+
+      ALTER TABLE messages
+        ADD COLUMN search_vector tsvector
+        GENERATED ALWAYS AS (
+          to_tsvector(
+            'simple',
+            coalesce(subject, '') || ' ' || coalesce(body_text, '')
+          )
+        ) STORED;
+
+      CREATE TABLE attachments (
+        id UUID PRIMARY KEY,
+        account_id UUID NOT NULL,
+        mailbox TEXT NOT NULL,
+        uid BIGINT NOT NULL,
+        file_name TEXT NOT NULL,
+        mime_type TEXT,
+        size BIGINT NOT NULL,
+        content_id TEXT,
+        storage_path TEXT NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL,
+        CONSTRAINT attachments_message_fk
+          FOREIGN KEY (account_id, mailbox, uid)
+          REFERENCES messages(account_id, mailbox, uid)
+          ON DELETE CASCADE
+      );
+
+      CREATE INDEX idx_attachments_message
+        ON attachments(account_id, mailbox, uid);
+
+      DROP INDEX IF EXISTS idx_messages_classification_status;
+      CREATE INDEX idx_messages_classification_status
+        ON messages(account_id, mailbox, tag_status);
+
+      CREATE INDEX idx_messages_tag_status
+        ON messages(tag_status);
+
+      CREATE INDEX idx_messages_account_date
+        ON messages(account_id, received_at);
+
+      CREATE INDEX idx_messages_search_vector
+        ON messages USING GIN (search_vector);
+
+      CREATE INDEX idx_messages_subject_trgm
+        ON messages USING GIN (subject gin_trgm_ops);
+
+      CREATE INDEX idx_messages_sender_name_trgm
+        ON messages USING GIN (sender_name gin_trgm_ops);
+
+      CREATE INDEX idx_messages_sender_address_trgm
+        ON messages USING GIN (sender_address gin_trgm_ops);
+    `,
+  },
+  {
+    version: 10,
+    name: 'account sync backoff',
+    sql: `
+      ALTER TABLE accounts
+        ADD COLUMN sync_fail_count INTEGER NOT NULL DEFAULT 0,
+        ADD COLUMN sync_backoff_until TIMESTAMPTZ;
+    `,
+  },
 ];

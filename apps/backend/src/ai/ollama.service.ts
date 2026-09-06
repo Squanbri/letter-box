@@ -18,7 +18,7 @@ export class OllamaService {
   }
 
   get model(): string {
-    return process.env.OLLAMA_MODEL ?? 'qwen3:0.6b';
+    return process.env.OLLAMA_MODEL ?? 'qwen2.5:7b';
   }
 
   async classify(input: {
@@ -37,7 +37,7 @@ export class OllamaService {
         keep_alive: '30m',
         options: {
           temperature: 0.2,
-          num_predict: 48,
+          num_predict: 64,
         },
       }),
     });

@@ -21,78 +21,117 @@ model User {
 }
 
 model Account {
-  id          String         @id @db.Uuid
-  userId      String?        @map("user_id") @db.Uuid
-  provider    String
-  email       String
-  status      String         @default("disconnected")
-  lastError   String?        @map("last_error")
-  lastSyncAt  DateTime?      @map("last_sync_at") @db.Timestamptz
-  createdAt   DateTime       @map("created_at") @db.Timestamptz
-  updatedAt   DateTime       @map("updated_at") @db.Timestamptz
-  user        User?          @relation(fields: [userId], references: [id], onDelete: Cascade)
-  mailboxState MailboxState[]
-  mailboxes   Mailbox[]
-  messages    Message[]
+  id               String         @id @db.Uuid
+  userId           String?        @map("user_id") @db.Uuid
+  provider         String
+  email            String
+  status           String         @default("disconnected")
+  lastError        String?        @map("last_error")
+  lastSyncAt       DateTime?      @map("last_sync_at") @db.Timestamptz
+  syncFailCount    Int            @default(0) @map("sync_fail_count")
+  syncBackoffUntil DateTime?      @map("sync_backoff_until") @db.Timestamptz
+  createdAt        DateTime       @map("created_at") @db.Timestamptz
+  updatedAt        DateTime       @map("updated_at") @db.Timestamptz
+  user             User?          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  mailboxState     MailboxState[]
+  mailboxes        Mailbox[]
+  messages         Message[]
 
   @@index([userId, createdAt], map: "idx_accounts_user_created")
   @@map("accounts")
 }
 
+/// Legacy IMAP uidvalidity cursor. New sync cursors live on Mailbox;
+/// keep until sync is switched over, then drop.
 model MailboxState {
-  accountId  String  @map("account_id") @db.Uuid
-  mailbox    String
-  uidValidity String @map("uid_validity")
-  account    Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  accountId   String  @map("account_id") @db.Uuid
+  mailbox     String
+  uidValidity String  @map("uid_validity")
+  account     Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
 
   @@id([accountId, mailbox])
   @@map("mailbox_state")
 }
 
+/// Folder (task naming). Path is the folder identity today (= folderId).
 model Mailbox {
-  accountId  String   @map("account_id") @db.Uuid
-  path       String
-  name       String
-  delimiter  String
-  specialUse String?  @map("special_use")
-  totalCount Int      @default(0) @map("total_count")
-  unreadCount Int     @default(0) @map("unread_count")
-  listedAt   DateTime @map("listed_at") @db.Timestamptz
-  account    Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  accountId     String    @map("account_id") @db.Uuid
+  path          String
+  name          String
+  delimiter     String
+  specialUse    String?   @map("special_use")
+  totalCount    Int       @default(0) @map("total_count")
+  unreadCount   Int       @default(0) @map("unread_count")
+  listedAt      DateTime  @map("listed_at") @db.Timestamptz
+  /// IMAP UIDVALIDITY for incremental sync.
+  uidValidity   String?   @map("uid_validity")
+  /// Highest UID observed in incremental sync.
+  lastSeenUid   BigInt?   @map("last_seen_uid")
+  /// Lowest UID reached by one-shot history backfill; null = backfill not started.
+  backfilledUid BigInt?   @map("backfilled_uid")
+  account       Account   @relation(fields: [accountId], references: [id], onDelete: Cascade)
 
   @@id([accountId, path])
   @@map("mailboxes")
 }
 
+/// Email (task naming). PK (accountId, mailbox, uid) ≡ unique (accountId, folderId, uid).
 model Message {
-  accountId   String    @map("account_id") @db.Uuid
-  mailbox     String
-  uid         BigInt
-  subject     String?
-  senderName  String?   @map("sender_name")
-  senderAddress String? @map("sender_address")
-  receivedAt  DateTime  @map("received_at") @db.Timestamptz
-  flags       Json
-  size        BigInt
-  bodyText    String?   @map("body_text")
-  bodyHtml    String?   @map("body_html")
-  bodyLoadedAt DateTime? @map("body_loaded_at") @db.Timestamptz
-  classificationText String? @map("classification_text")
-  classificationStatus String @default("pending") @map("classification_status")
-  classifiedAt DateTime? @map("classified_at") @db.Timestamptz
-  tags        Json      @default("[]")
-  messageId   String?   @map("message_id")
-  inReplyTo   String?   @map("in_reply_to")
-  referencesHeader String? @map("references_header")
-  threadId    String?   @map("thread_id")
-  account     Account   @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  accountId            String    @map("account_id") @db.Uuid
+  /// Folder path identity (folderId until surrogate UUID is introduced).
+  mailbox              String
+  uid                  BigInt
+  subject              String?
+  senderName           String?   @map("sender_name")
+  senderAddress        String?   @map("sender_address")
+  receivedAt           DateTime  @map("received_at") @db.Timestamptz
+  flags                Json
+  size                 BigInt
+  bodyText             String?   @map("body_text")
+  bodyHtml             String?   @map("body_html")
+  bodyLoadedAt         DateTime? @map("body_loaded_at") @db.Timestamptz
+  classificationText   String?   @map("classification_text")
+  /// Domain name: tagStatus. Values: pending | processing | tagged | failed
+  /// ("completed" may still exist on legacy rows until heuristics/sweep normalize them).
+  classificationStatus String    @default("pending") @map("tag_status")
+  tagAttempts          Int       @default(0) @map("tag_attempts")
+  classifiedAt         DateTime? @map("tagged_at") @db.Timestamptz
+  tags                 Json      @default("[]")
+  messageId            String?   @map("message_id")
+  inReplyTo            String?   @map("in_reply_to")
+  referencesHeader     String?   @map("references_header")
+  threadId             String?   @map("thread_id")
+  /// Managed by SQL GENERATED ALWAYS AS ... STORED; do not write via Prisma.
+  searchVector         Unsupported("tsvector")? @map("search_vector")
+  account              Account   @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  attachments          Attachment[]
 
   @@id([accountId, mailbox, uid])
   @@index([accountId, mailbox, receivedAt(sort: Desc), uid(sort: Desc)], map: "idx_messages_received_at")
   @@index([accountId, mailbox, classificationStatus], map: "idx_messages_classification_status")
+  @@index([classificationStatus], map: "idx_messages_tag_status")
+  @@index([accountId, receivedAt], map: "idx_messages_account_date")
   @@index([accountId, messageId], map: "idx_messages_message_id")
   @@index([accountId, threadId, receivedAt], map: "idx_messages_thread_id")
   @@map("messages")
+}
+
+/// Attachment metadata only — binary payload lives at storagePath (disk/object store).
+model Attachment {
+  id          String   @id @db.Uuid
+  accountId   String   @map("account_id") @db.Uuid
+  mailbox     String
+  uid         BigInt
+  fileName    String   @map("file_name")
+  mimeType    String?  @map("mime_type")
+  size        BigInt
+  contentId   String?  @map("content_id")
+  storagePath String   @map("storage_path")
+  createdAt   DateTime @map("created_at") @db.Timestamptz
+  message     Message  @relation(fields: [accountId, mailbox, uid], references: [accountId, mailbox, uid], onDelete: Cascade)
+
+  @@index([accountId, mailbox, uid], map: "idx_attachments_message")
+  @@map("attachments")
 }
 
 model AuthSession {

@@ -3,8 +3,8 @@ import test from 'node:test';
 import type { AccountStatus } from '@letter-box/contracts';
 import { AccountService } from '../account/account.service';
 import type { MailRepositoryContract } from '../database/repository.contracts';
-import { ImapService, selectMetadataUids } from './imap.service';
-import { MailService } from './mail.service';
+import { ImapService, selectBackfillUids, selectMetadataUids } from './imap.service';
+import { isConnectionOrAuthError, MailService } from './mail.service';
 import { SmtpService } from './smtp.service';
 import type { MailboxChanges, MailboxRecord, MessageRow } from './mail.types';
 
@@ -26,6 +26,11 @@ function accountsMock(status: AccountStatus['status'] = 'connected'): AccountSer
     markSynced: async () => {
       state.status = 'connected';
     },
+    recordSyncFailure: async (_id: string, _error: string) => {
+      state.status = 'error';
+    },
+    isSyncBackoffActive: async () => false,
+    getSyncBackoffRemainingMs: async () => 0,
   } as unknown as AccountService;
 }
 
@@ -47,6 +52,8 @@ function repositoryMock(
   return {
     mailboxState: async () => undefined,
     knownUids: async () => [],
+    folderCursor: async () => undefined,
+    setFolderCursor: async () => undefined,
     applyChanges: async () => 0,
     listMessages: async () => [],
     listInbox: async () => [],
@@ -129,7 +136,7 @@ test('deduplicates concurrent synchronization for the same account', async () =>
   assert.strictEqual(first, second);
   await started;
   release();
-  const emptyResult = { synced: 0, added: 0, updated: 0, removed: 0 };
+  const emptyResult = { synced: 0, added: 0, updated: 0, removed: 0, uidValidityReset: false };
   assert.deepEqual(await Promise.all([first, second]), [emptyResult, emptyResult]);
   assert.equal(fetches, 1);
 });
@@ -221,11 +228,11 @@ test('passes classification candidates and applies incremental sync results', as
 
   assert.deepEqual(
     await mail.syncMailbox('first'),
-    { synced: 1, added: 1, updated: 0, removed: 1 },
+    { synced: 1, added: 1, updated: 0, removed: 1, uidValidityReset: false },
   );
   assert.deepEqual(
     await mail.syncMailbox('first'),
-    { synced: 0, added: 0, updated: 0, removed: 1 },
+    { synced: 0, added: 0, updated: 0, removed: 1, uidValidityReset: false },
   );
   assert.deepEqual(candidateCalls, [[1], []]);
   assert.equal(applyCalls[0]?.classificationPreparations.length, 2);
@@ -241,6 +248,151 @@ test('limits initial metadata and never backfills older UIDs as new mail', () =>
     selectMetadataUids([...serverUids, 1001, 1002], [998, 999, 1000], 500),
     [1001, 1002],
   );
+});
+
+test('selectBackfillUids walks newest-to-oldest below the cursor', () => {
+  const serverUids = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+  assert.deepEqual(selectBackfillUids(serverUids, 8, 3), [5, 6, 7]);
+  assert.deepEqual(selectBackfillUids(serverUids, 5, 10), [1, 2, 3, 4]);
+  assert.deepEqual(selectBackfillUids(serverUids, 1, 10), []);
+  assert.deepEqual(selectBackfillUids(serverUids, undefined, 3), [8, 9, 10]);
+});
+
+test('backfill resumes from backfilledUid and marks folder complete', async () => {
+  process.env.BACKFILL_BATCH_DELAY_MS = '0';
+  process.env.BACKFILL_BATCH_SIZE = '200';
+
+  let backfilledUid: number | null = 8;
+  const known = [8, 9, 10];
+  const saved: number[][] = [];
+  const fetches: Array<number | undefined> = [];
+
+  const repository = repositoryMock({
+    folderCursor: async () => ({
+      uidValidity: '1',
+      lastSeenUid: 10,
+      backfilledUid,
+    }),
+    knownUids: async () => known,
+    setFolderCursor: async (_accountId, _mailbox, cursor) => {
+      if (cursor.backfilledUid !== undefined) {
+        backfilledUid = cursor.backfilledUid;
+      }
+    },
+    saveMessages: async (_accountId, _mailbox, messages) => {
+      saved.push(messages.map((message) => message.uid));
+      known.push(...messages.map((message) => message.uid));
+    },
+  });
+
+  const imap = {
+    fetchOlderMetadata: async (
+      _accountId: string,
+      _mailbox: string,
+      beforeUid: number | undefined,
+      limit: number,
+    ) => {
+      fetches.push(beforeUid);
+      const page = selectBackfillUids(
+        [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+        beforeUid,
+        limit,
+      );
+      return page.map((uid) => ({
+        uid,
+        subject: `m-${uid}`,
+        senderName: null,
+        senderAddress: 'a@b.c',
+        date: new Date(uid * 1_000).toISOString(),
+        flags: [],
+        size: uid,
+        messageId: `<${uid}@example.com>`,
+        inReplyTo: null,
+        references: [],
+        threadId: `<${uid}@example.com>`,
+      }));
+    },
+  } as unknown as ImapService;
+
+  const mail = new MailService(repository, imap, smtpMock(), accountsMock());
+  const result = await mail.backfillMailbox('first', 'INBOX');
+
+  assert.equal(result.done, true);
+  assert.equal(result.backfilledUid, 0);
+  assert.deepEqual(fetches[0], 8);
+  assert.ok(saved.length >= 1);
+  assert.equal(Math.min(...saved.flat()), 1);
+  assert.equal(backfilledUid, 0);
+});
+
+test('backfill no-ops when folder history is already complete', async () => {
+  const fetches: number[] = [];
+  const repository = repositoryMock({
+    folderCursor: async () => ({
+      uidValidity: '1',
+      lastSeenUid: 10,
+      backfilledUid: 0,
+    }),
+  });
+  const imap = {
+    fetchOlderMetadata: async () => {
+      fetches.push(1);
+      return [];
+    },
+  } as unknown as ImapService;
+  const mail = new MailService(repository, imap, smtpMock(), accountsMock());
+  const result = await mail.backfillMailbox('first', 'INBOX');
+  assert.deepEqual(result, { done: true, loaded: 0, backfilledUid: 0 });
+  assert.deepEqual(fetches, []);
+});
+
+test('detects connection and auth errors for sync backoff', () => {
+  assert.equal(isConnectionOrAuthError('IMAP authentication failed'), true);
+  assert.equal(isConnectionOrAuthError('connect ETIMEDOUT'), true);
+  assert.equal(isConnectionOrAuthError('oauth token expired'), true);
+  assert.equal(isConnectionOrAuthError('parse error in envelope'), false);
+});
+
+test('marks uidValidityReset when IMAP UIDVALIDITY changes', async () => {
+  const warnings: unknown[] = [];
+  const originalWarn = console.warn;
+  console.warn = (...args: unknown[]) => {
+    warnings.push(args);
+  };
+  try {
+    const repository = repositoryMock({
+      folderCursor: async () => ({
+        uidValidity: '111',
+        lastSeenUid: 10,
+        backfilledUid: 0,
+      }),
+      mailboxState: async () => '111',
+      applyChanges: async (_accountId, _mailbox, changes) => {
+        assert.equal(changes.reset, true);
+        return 3;
+      },
+    });
+    const imap = {
+      fetchChanges: async () => ({
+        uidValidity: '222',
+        reset: true,
+        serverUids: [1],
+        messages: [],
+        flagUpdates: [],
+        classificationPreparations: [],
+      }),
+    } as unknown as ImapService;
+    const mail = new MailService(repository, imap, smtpMock(), accountsMock());
+    const result = await mail.syncMailbox('first', 'INBOX');
+    assert.equal(result.uidValidityReset, true);
+    assert.ok(
+      warnings.some((entry) =>
+        Array.isArray(entry) && String(entry[0]).includes('[sync:uidvalidity]'),
+      ),
+    );
+  } finally {
+    console.warn = originalWarn;
+  }
 });
 
 test('flags, archives, and deletes only the targeted message', async () => {

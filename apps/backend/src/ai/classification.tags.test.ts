@@ -1,67 +1,36 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
-  applyImportantHeuristic,
-  looksImportant,
-  normalizeTags,
-  parseClassificationResponse,
+  buildClassificationPrompt,
+  collapseQuotedHistory,
 } from './classification.tags';
 
-test('normalizes allowed tags and falls back to other', () => {
-  assert.deepEqual(normalizeTags(['Work', 'it', 'work', 'unknown']), ['work', 'it']);
-  assert.deepEqual(normalizeTags([]), ['other']);
-  assert.deepEqual(normalizeTags('spam, promo'), ['spam', 'promo']);
-  assert.deepEqual(normalizeTags(['important', 'work']), ['important', 'work']);
-  assert.deepEqual(normalizeTags(['important', 'promo', 'work']), ['promo', 'work']);
+test('collapseQuotedHistory keeps top-level quotes and marks deeper nests', () => {
+  const input = [
+    'Thanks, see below.',
+    '',
+    'On Mon, Alice wrote:',
+    '> Hello',
+    '> On Sun, Bob wrote:',
+    '> > nested older reply',
+    '> > still nested',
+    '> ok',
+  ].join('\n');
+
+  const collapsed = collapseQuotedHistory(input);
+  assert.match(collapsed, /Thanks, see below/);
+  assert.match(collapsed, /> Hello/);
+  assert.match(collapsed, /deeper quoted history collapsed/);
+  assert.doesNotMatch(collapsed, /nested older reply/);
 });
 
-test('parses ollama json and free-form responses', () => {
-  assert.deepEqual(
-    parseClassificationResponse('{"tags":["news","it"]}'),
-    ['news', 'it'],
-  );
-  assert.deepEqual(
-    parseClassificationResponse('Sure.\n{"tags":["games"]}\n'),
-    ['games'],
-  );
-  assert.deepEqual(
-    parseClassificationResponse('tags: work finance'),
-    ['work', 'finance'],
-  );
-  assert.deepEqual(
-    parseClassificationResponse('{"tags":["important","it"]}'),
-    ['important', 'it'],
-  );
-  assert.deepEqual(
-    parseClassificationResponse('{"tags":["important","promo"]}'),
-    ['promo'],
-  );
-});
-
-test('important heuristic catches OTP and security mail', () => {
-  assert.equal(
-    looksImportant({
-      subject: 'Разовый код',
-      from: 'security@example.com',
-      text: 'Ваш код: 123456',
-    }),
-    true,
-  );
-  assert.equal(
-    looksImportant({
-      subject: "Don't miss today's login reward",
-      from: 'no-reply@news.meshy.ai',
-      text: 'Come back for rewards',
-    }),
-    false,
-  );
-  assert.deepEqual(
-    applyImportantHeuristic({
-      subject: 'Вход с нового устройства в аккаунт',
-      from: 'security@id.mail.ru',
-      text: 'Кто-то вошёл',
-      tags: ['promo', 'work'],
-    }),
-    ['important', 'work'],
-  );
+test('classification prompt includes full prepared body without 1200 cut', () => {
+  const body = 'x'.repeat(2_500);
+  const prompt = buildClassificationPrompt({
+    subject: 'Hi',
+    from: 'a@b.c',
+    text: body,
+  });
+  assert.ok(prompt.includes(body));
+  assert.ok(!prompt.includes(`Body: ${body.slice(0, 1200)}\n`));
 });

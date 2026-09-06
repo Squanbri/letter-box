@@ -4,6 +4,7 @@ import {
   NotFoundException,
   Optional,
 } from '@nestjs/common';
+import type { BackfillResult } from '@letter-box/contracts';
 import { AccountService } from '../account/account.service';
 import { ImapService } from './imap.service';
 import { MailboxRecord, MessageRecord, MessageRow, parseMessageIds } from './mail.types';
@@ -20,6 +21,13 @@ import {
   MailRepositoryContract,
 } from '../database/repository.contracts';
 import { SmtpService } from './smtp.service';
+import { MailboxFolderLock } from '../sync/mailbox-folder.lock';
+import {
+  BACKFILL_BATCH_DELAY_MS,
+  BACKFILL_BATCH_SIZE,
+  BACKFILL_COMPLETE_UID,
+} from '../sync/sync-queue.types';
+import { TaggingQueueService } from '../ai/tagging-queue.service';
 export type { SyncResult } from '@letter-box/contracts';
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -38,6 +46,8 @@ export class MailService {
     @Inject(SmtpService) private readonly smtp: SmtpService,
     @Inject(AccountService) private readonly accounts: AccountService,
     @Optional() @Inject(EventsGateway) private readonly events?: EventsGateway,
+    @Optional() @Inject(MailboxFolderLock) private readonly folderLock?: MailboxFolderLock,
+    @Optional() @Inject(TaggingQueueService) private readonly tagging?: TaggingQueueService,
   ) {}
 
   async connect(accountId: string): Promise<{ connected: true }> {
@@ -55,10 +65,169 @@ export class MailService {
     const syncKey = `${accountId}\0${mailbox}`;
     const running = this.syncs.get(syncKey);
     if (running) return running.promise;
-    const sync = this.performSync(accountId, mailbox)
-      .finally(() => this.syncs.delete(syncKey));
+    const sync = this.withAccountLock(accountId, () =>
+      this.withFolderLock(accountId, mailbox, () =>
+        this.performSync(accountId, mailbox),
+      ),
+    ).finally(() => this.syncs.delete(syncKey));
     this.syncs.set(syncKey, { mailbox, promise: sync });
     return sync;
+  }
+
+  /**
+   * One-shot history import: walks UIDs newest→oldest in FETCH batches,
+   * persisting Folder.backfilledUid after each batch so restarts resume.
+   * Releases the folder lock between batches so incremental sync can run.
+   */
+  async backfillMailbox(
+    accountId: string,
+    mailbox = 'INBOX',
+    options: { force?: boolean } = {},
+  ): Promise<BackfillResult> {
+    await this.accounts.get(accountId);
+    if (options.force) {
+      await this.repository.setFolderCursor(accountId, mailbox, {
+        backfilledUid: null,
+      });
+    }
+
+    const delayMs = Math.max(
+      Number(process.env.BACKFILL_BATCH_DELAY_MS ?? BACKFILL_BATCH_DELAY_MS),
+      0,
+    );
+    let loaded = 0;
+    let backfilledUid: number | null = null;
+
+    while (true) {
+      const batch = await this.withFolderLock(accountId, mailbox, () =>
+        this.backfillOneBatch(accountId, mailbox),
+      );
+      loaded += batch.loaded;
+      backfilledUid = batch.backfilledUid;
+      if (batch.done) {
+        return { done: true, loaded, backfilledUid };
+      }
+      if (delayMs > 0) await sleep(delayMs);
+    }
+  }
+
+  async isBackfillComplete(accountId: string, mailbox: string): Promise<boolean> {
+    const cursor = await this.repository.folderCursor(accountId, mailbox);
+    return cursor?.backfilledUid === BACKFILL_COMPLETE_UID;
+  }
+
+  private async backfillOneBatch(
+    accountId: string,
+    mailbox: string,
+  ): Promise<BackfillResult> {
+    const cursor = await this.repository.folderCursor(accountId, mailbox);
+    if (cursor?.backfilledUid === BACKFILL_COMPLETE_UID) {
+      return {
+        done: true,
+        loaded: 0,
+        backfilledUid: BACKFILL_COMPLETE_UID,
+      };
+    }
+
+    const beforeUid = await this.resolveBackfillBeforeUid(
+      accountId,
+      mailbox,
+      cursor?.backfilledUid ?? null,
+    );
+    const batchSize = Math.min(
+      Math.max(
+        Number(process.env.BACKFILL_BATCH_SIZE ?? BACKFILL_BATCH_SIZE),
+        200,
+      ),
+      500,
+    );
+    const messages = await this.imap.fetchOlderMetadata(
+      accountId,
+      mailbox,
+      beforeUid,
+      batchSize,
+    );
+
+    if (messages.length === 0) {
+      await this.repository.setFolderCursor(accountId, mailbox, {
+        backfilledUid: BACKFILL_COMPLETE_UID,
+      });
+      return {
+        done: true,
+        loaded: 0,
+        backfilledUid: BACKFILL_COMPLETE_UID,
+      };
+    }
+
+    await this.repository.saveMessages(accountId, mailbox, messages);
+    const lowest = messages.reduce(
+      (min, message) => Math.min(min, message.uid),
+      messages[0]!.uid,
+    );
+    await this.repository.setFolderCursor(accountId, mailbox, {
+      backfilledUid: lowest,
+    });
+    this.enqueueTags(
+      accountId,
+      mailbox,
+      messages.map((message) => message.uid),
+      'backfill',
+    );
+    return {
+      done: false,
+      loaded: messages.length,
+      backfilledUid: lowest,
+    };
+  }
+
+  private async resolveBackfillBeforeUid(
+    accountId: string,
+    mailbox: string,
+    backfilledUid: number | null,
+  ): Promise<number | undefined> {
+    if (backfilledUid !== null && backfilledUid > 0) {
+      return backfilledUid;
+    }
+    const known = await this.repository.knownUids(accountId, mailbox);
+    if (known.length === 0) return undefined;
+    return known.reduce((min, uid) => Math.min(min, uid), known[0]!);
+  }
+
+  private async withFolderLock<T>(
+    accountId: string,
+    mailbox: string,
+    run: () => Promise<T>,
+  ): Promise<T> {
+    if (!this.folderLock) return run();
+    return this.folderLock.withLock(accountId, mailbox, run);
+  }
+
+  private async withAccountLock<T>(
+    accountId: string,
+    run: () => Promise<T>,
+  ): Promise<T> {
+    if (!this.folderLock) return run();
+    return this.folderLock.withAccountLock(accountId, run);
+  }
+
+  private enqueueTags(
+    accountId: string,
+    mailbox: string,
+    uids: number[],
+    source: 'sync' | 'backfill',
+  ): void {
+    if (!this.tagging || uids.length === 0) return;
+    const unique = [...new Set(uids.filter((uid) => Number.isInteger(uid) && uid > 0))];
+    if (unique.length === 0) return;
+    void this.tagging.enqueueMany(accountId, mailbox, unique, source).catch((error) => {
+      console.error('[tagging] enqueue failed', {
+        accountId,
+        mailbox,
+        source,
+        count: unique.length,
+        error: error instanceof Error ? error.message : error,
+      });
+    });
   }
 
   private async performSync(accountId: string, mailbox: string): Promise<SyncResult> {
@@ -66,7 +235,9 @@ export class MailService {
     await this.accounts.setStatus(accountId, 'syncing');
     this.events?.publish({ type: 'sync.started', accountId, mailbox });
     try {
-      const uidValidity = await this.repository.mailboxState(accountId, mailbox);
+      const cursor = await this.repository.folderCursor(accountId, mailbox);
+      const expectedUidValidity = cursor?.uidValidity
+        ?? await this.repository.mailboxState(accountId, mailbox);
       const knownUids = await this.repository.knownUids(accountId, mailbox);
       const classificationCandidateUids =
         await this.repository.classificationCandidateUids(accountId, mailbox);
@@ -74,17 +245,36 @@ export class MailService {
         accountId,
         mailbox,
         knownUids,
-        uidValidity,
+        expectedUidValidity,
         classificationCandidateUids,
       );
 
+      if (result.reset) {
+        console.warn('[sync:uidvalidity] folder UIDVALIDITY changed; wiping local mail and re-queuing backfill', {
+          accountId,
+          mailbox,
+          previous: expectedUidValidity ?? null,
+          next: result.uidValidity,
+        });
+      }
+
       const removed = await this.repository.applyChanges(accountId, mailbox, result);
       await this.accounts.markSynced(accountId);
+      this.enqueueTags(
+        accountId,
+        mailbox,
+        [
+          ...result.messages.map((message) => message.uid),
+          ...result.classificationPreparations.map((item) => item.uid),
+        ],
+        'sync',
+      );
       const syncResult = {
         synced: result.messages.length + result.flagUpdates.length,
         added: result.messages.length,
         updated: result.flagUpdates.length,
         removed,
+        uidValidityReset: result.reset,
       };
       this.events?.publish({
         type: 'sync.completed',
@@ -94,12 +284,17 @@ export class MailService {
       });
       return syncResult;
     } catch (error) {
-      await this.accounts.setStatus(accountId, 'error', this.message(error));
+      const message = this.message(error);
+      if (isConnectionOrAuthError(message)) {
+        await this.accounts.recordSyncFailure(accountId, message);
+      } else {
+        await this.accounts.setStatus(accountId, 'error', message);
+      }
       this.events?.publish({
         type: 'sync.failed',
         accountId,
         mailbox,
-        error: this.message(error),
+        error: message,
       });
       throw error;
     }
@@ -251,6 +446,12 @@ export class MailService {
       50,
     );
     await this.repository.saveMessages(accountId, mailbox, messages);
+    this.enqueueTags(
+      accountId,
+      mailbox,
+      messages.map((message) => message.uid),
+      'backfill',
+    );
     return { loaded: messages.length };
   }
 
@@ -484,6 +685,15 @@ export class MailService {
   private message(error: unknown): string {
     return error instanceof Error ? error.message : 'Неизвестная ошибка IMAP';
   }
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+export function isConnectionOrAuthError(message: string): boolean {
+  return /auth|credential|login|connect|ECONN|ETIMEDOUT|ENOTFOUND|EAI_AGAIN|socket|TLS|SSL|oauth|token|unauthoriz|forbidden|needs_reauth|IMAP|authentication|timed?\s*out/i
+    .test(message);
 }
 
 function optionalHeader(value: string | undefined): string | undefined {

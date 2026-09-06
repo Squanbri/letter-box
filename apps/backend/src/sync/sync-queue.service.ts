@@ -8,27 +8,47 @@ import {
 } from '@nestjs/common';
 import { createHash } from 'node:crypto';
 import { Job, Queue, QueueEvents } from 'bullmq';
-import type { SyncResult, SyncStatus } from '@letter-box/contracts';
+import type {
+  BackfillResult,
+  SyncResult,
+  SyncStatus,
+} from '@letter-box/contracts';
+import { AccountService } from '../account/account.service';
+import {
+  MAIL_REPOSITORY,
+  MailRepositoryContract,
+} from '../database/repository.contracts';
 import { EventsGateway } from '../events/events.gateway';
 import {
+  BACKFILL_COMPLETE_UID,
+  BACKFILL_JOB,
+  MailboxJobData,
+  MailboxJobResult,
+  SYNC_JOB,
   SYNC_QUEUE_NAME,
+  SYNC_TICK_FOLDERS_JOB,
+  SYNC_TICK_INBOX_JOB,
   SyncJobData,
   SyncJobResult,
+  syncFolderIntervalMs,
+  syncInboxIntervalMs,
 } from './sync-queue.types';
 
 @Injectable()
 export class SyncQueueService implements OnModuleInit, OnModuleDestroy {
-  private queue?: Queue<SyncJobData, SyncJobResult>;
+  private queue?: Queue<MailboxJobData, MailboxJobResult>;
   private events?: QueueEvents;
-  private readonly activeJobs = new Map<string, SyncJobData>();
+  private readonly activeJobs = new Map<string, { name: string; data: MailboxJobData }>();
 
   constructor(
     @Inject(EventsGateway) private readonly gateway: EventsGateway,
+    @Inject(MAIL_REPOSITORY) private readonly mail: MailRepositoryContract,
+    @Inject(AccountService) private readonly accounts: AccountService,
   ) {}
 
   async onModuleInit(): Promise<void> {
     const connection = this.connection();
-    this.queue = new Queue<SyncJobData, SyncJobResult>(
+    this.queue = new Queue<MailboxJobData, MailboxJobResult>(
       SYNC_QUEUE_NAME,
       {
         connection,
@@ -45,12 +65,13 @@ export class SyncQueueService implements OnModuleInit, OnModuleDestroy {
       void this.publishStarted(jobId);
     });
     this.events.on('completed', ({ jobId, returnvalue }) => {
-      void this.publishCompleted(jobId, this.parseResult(returnvalue));
+      void this.publishCompleted(jobId, returnvalue);
     });
     this.events.on('failed', ({ jobId, failedReason }) => {
       void this.publishFailed(jobId, failedReason);
     });
     await Promise.all([this.queue.waitUntilReady(), this.events.waitUntilReady()]);
+    await this.ensureSchedulerTicks();
   }
 
   async onModuleDestroy(): Promise<void> {
@@ -67,18 +88,88 @@ export class SyncQueueService implements OnModuleInit, OnModuleDestroy {
     if (!this.queue || !this.events) {
       throw new ServiceUnavailableException('Очередь синхронизации недоступна');
     }
+    await this.assertNotInBackoff(accountId);
+    const jobId = this.syncJobId(accountId, mailbox);
+    const existing = await this.queue.getJob(jobId);
+    if (existing) {
+      const state = await existing.getState();
+      if (state === 'active' || state === 'waiting' || state === 'delayed') {
+        try {
+          return await existing.waitUntilFinished(this.events, 20 * 60 * 1_000) as SyncResult;
+        } catch (error) {
+          throw new BadGatewayException(
+            error instanceof Error ? error.message : 'Неизвестная ошибка sync worker',
+          );
+        }
+      }
+    }
     const job = await this.queue.add(
-      'sync',
+      SYNC_JOB,
       { accountId, mailbox },
-      { jobId: this.jobId(accountId, mailbox) },
+      { jobId },
     );
     try {
-      return await job.waitUntilFinished(this.events, 20 * 60 * 1_000);
+      return await job.waitUntilFinished(this.events, 20 * 60 * 1_000) as SyncResult;
     } catch (error) {
       const message = error instanceof Error
         ? error.message
         : 'Неизвестная ошибка sync worker';
       throw new BadGatewayException(message);
+    }
+  }
+
+  /** Fire-and-forget incremental sync. Deduped by stable jobId per folder. */
+  async enqueueSync(
+    accountId: string,
+    mailbox: string,
+  ): Promise<{ queued: boolean }> {
+    if (!this.queue) {
+      throw new ServiceUnavailableException('Очередь синхронизации недоступна');
+    }
+    if (await this.accounts.isSyncBackoffActive(accountId)) {
+      return { queued: false };
+    }
+    try {
+      await this.queue.add(
+        SYNC_JOB,
+        { accountId, mailbox },
+        { jobId: this.syncJobId(accountId, mailbox) },
+      );
+      return { queued: true };
+    } catch (error) {
+      if (isDuplicateJobError(error)) return { queued: false };
+      throw error;
+    }
+  }
+
+  /**
+   * Fire-and-forget history backfill. Deduped per folder via stable jobId.
+   * No-ops when Folder.backfilledUid is already the complete sentinel (unless force).
+   */
+  async enqueueBackfill(
+    accountId: string,
+    mailbox: string,
+    options: { force?: boolean } = {},
+  ): Promise<{ queued: boolean }> {
+    if (!this.queue) {
+      throw new ServiceUnavailableException('Очередь синхронизации недоступна');
+    }
+    if (!options.force) {
+      const cursor = await this.mail.folderCursor(accountId, mailbox);
+      if (cursor?.backfilledUid === BACKFILL_COMPLETE_UID) {
+        return { queued: false };
+      }
+    }
+    try {
+      await this.queue.add(
+        BACKFILL_JOB,
+        { accountId, mailbox, force: options.force },
+        { jobId: this.backfillJobId(accountId, mailbox) },
+      );
+      return { queued: true };
+    } catch (error) {
+      if (isDuplicateJobError(error)) return { queued: false };
+      throw error;
     }
   }
 
@@ -91,12 +182,16 @@ export class SyncQueueService implements OnModuleInit, OnModuleDestroy {
       0,
       999,
     );
+    const syncing = new Set<string>();
+    const backfilling = new Set<string>();
+    for (const job of jobs) {
+      if (!isSyncJobData(job.data) || job.data.accountId !== accountId) continue;
+      if (job.name === BACKFILL_JOB) backfilling.add(job.data.mailbox);
+      else if (job.name === SYNC_JOB) syncing.add(job.data.mailbox);
+    }
     return {
-      mailboxes: [...new Set(
-        jobs
-          .filter((job) => job.data.accountId === accountId)
-          .map((job) => job.data.mailbox),
-      )],
+      mailboxes: [...syncing],
+      backfilling: [...backfilling],
     };
   }
 
@@ -105,6 +200,40 @@ export class SyncQueueService implements OnModuleInit, OnModuleDestroy {
       throw new ServiceUnavailableException('Очередь синхронизации недоступна');
     }
     return this.queue.getWorkersCount();
+  }
+
+  private async ensureSchedulerTicks(): Promise<void> {
+    if (!this.queue) return;
+    await this.queue.add(
+      SYNC_TICK_INBOX_JOB,
+      {},
+      {
+        jobId: SYNC_TICK_INBOX_JOB,
+        repeat: { every: syncInboxIntervalMs() },
+        removeOnComplete: true,
+        removeOnFail: true,
+      },
+    );
+    await this.queue.add(
+      SYNC_TICK_FOLDERS_JOB,
+      {},
+      {
+        jobId: SYNC_TICK_FOLDERS_JOB,
+        repeat: { every: syncFolderIntervalMs() },
+        removeOnComplete: true,
+        removeOnFail: true,
+      },
+    );
+  }
+
+  private async assertNotInBackoff(accountId: string): Promise<void> {
+    if (!(await this.accounts.isSyncBackoffActive(accountId))) return;
+    const remaining = await this.accounts.getSyncBackoffRemainingMs(accountId);
+    const status = await this.accounts.get(accountId).catch(() => undefined);
+    throw new ServiceUnavailableException(
+      `Синхронизация на паузе ещё ${Math.ceil(remaining / 1000)}с`
+      + (status?.lastError ? `: ${status.lastError}` : ''),
+    );
   }
 
   private connection(): { url: string } {
@@ -117,49 +246,105 @@ export class SyncQueueService implements OnModuleInit, OnModuleDestroy {
     return { url };
   }
 
-  private jobId(accountId: string, mailbox: string): string {
+  private syncJobId(accountId: string, mailbox: string): string {
     return createHash('sha256')
-      .update(`${accountId}\0${mailbox}`)
+      .update(`sync\0${accountId}\0${mailbox}`)
       .digest('base64url');
   }
 
-  private async getJob(jobId: string): Promise<Job<SyncJobData> | undefined> {
+  private backfillJobId(accountId: string, mailbox: string): string {
+    return createHash('sha256')
+      .update(`backfill\0${accountId}\0${mailbox}`)
+      .digest('base64url');
+  }
+
+  private async getJob(jobId: string): Promise<Job<MailboxJobData> | undefined> {
     return this.queue?.getJob(jobId);
   }
 
   private async publishStarted(jobId: string): Promise<void> {
     const job = await this.getJob(jobId);
-    if (!job) return;
-    this.activeJobs.set(jobId, job.data);
+    if (!job || isSchedulerTick(job.name) || !isSyncJobData(job.data)) return;
+    this.activeJobs.set(jobId, { name: job.name, data: job.data });
+    if (job.name === BACKFILL_JOB) {
+      this.gateway.publish({ type: 'backfill.started', ...job.data });
+      return;
+    }
     this.gateway.publish({ type: 'sync.started', ...job.data });
   }
 
   private async publishCompleted(
     jobId: string,
-    result: SyncResult,
+    returnvalue: string | MailboxJobResult,
   ): Promise<void> {
-    const data = this.activeJobs.get(jobId) ?? (await this.getJob(jobId))?.data;
+    const tracked = this.activeJobs.get(jobId) ?? await this.lookupActive(jobId);
     this.activeJobs.delete(jobId);
-    if (!data) return;
+    if (!tracked || !isSyncJobData(tracked.data)) return;
+    if (tracked.name === BACKFILL_JOB) {
+      this.gateway.publish({
+        type: 'backfill.completed',
+        ...tracked.data,
+        result: this.parseBackfillResult(returnvalue),
+      });
+      return;
+    }
     this.gateway.publish({
       type: 'sync.completed',
-      ...data,
-      result,
+      ...tracked.data,
+      result: this.parseSyncResult(returnvalue),
     });
   }
 
   private async publishFailed(jobId: string, error: string): Promise<void> {
-    const data = this.activeJobs.get(jobId) ?? (await this.getJob(jobId))?.data;
+    const tracked = this.activeJobs.get(jobId) ?? await this.lookupActive(jobId);
     this.activeJobs.delete(jobId);
-    if (!data) return;
+    if (!tracked || !isSyncJobData(tracked.data)) return;
+    if (tracked.name === BACKFILL_JOB) {
+      this.gateway.publish({
+        type: 'backfill.failed',
+        ...tracked.data,
+        error,
+      });
+      return;
+    }
     this.gateway.publish({
       type: 'sync.failed',
-      ...data,
+      ...tracked.data,
       error,
     });
   }
 
-  private parseResult(value: string): SyncResult {
+  private async lookupActive(
+    jobId: string,
+  ): Promise<{ name: string; data: MailboxJobData } | undefined> {
+    const job = await this.getJob(jobId);
+    if (!job) return undefined;
+    return { name: job.name, data: job.data };
+  }
+
+  private parseSyncResult(value: string | MailboxJobResult): SyncResult {
+    if (typeof value !== 'string') return value as SyncJobResult;
     return JSON.parse(value) as SyncResult;
   }
+
+  private parseBackfillResult(value: string | MailboxJobResult): BackfillResult {
+    if (typeof value !== 'string') return value as BackfillResult;
+    return JSON.parse(value) as BackfillResult;
+  }
+}
+
+function isSchedulerTick(name: string): boolean {
+  return name === SYNC_TICK_INBOX_JOB || name === SYNC_TICK_FOLDERS_JOB;
+}
+
+function isSyncJobData(data: MailboxJobData): data is SyncJobData {
+  return typeof data === 'object'
+    && data !== null
+    && 'accountId' in data
+    && 'mailbox' in data;
+}
+
+function isDuplicateJobError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return /already exists|JobId/i.test(message);
 }

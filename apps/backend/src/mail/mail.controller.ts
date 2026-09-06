@@ -28,8 +28,13 @@ export class MailController {
   ) {}
 
   @Post('imap/connect')
-  connect(@Param('accountId') accountId: string): Promise<{ connected: true }> {
-    return this.mail.connect(accountId);
+  async connect(
+    @Param('accountId') accountId: string,
+  ): Promise<{ connected: true }> {
+    const result = await this.mail.connect(accountId);
+    // Incremental first; worker chains history backfill when sync completes.
+    void this.syncQueue.enqueueSync(accountId, 'INBOX').catch(() => undefined);
+    return result;
   }
 
   @Post('mail/sync')
@@ -38,6 +43,17 @@ export class MailController {
     @Query('mailbox') mailbox = 'INBOX',
   ): Promise<SyncResult> {
     return this.syncQueue.enqueueAndWait(accountId, mailbox);
+  }
+
+  @Post('mail/backfill')
+  backfill(
+    @Param('accountId') accountId: string,
+    @Query('mailbox') mailbox = 'INBOX',
+    @Query('force') force?: string,
+  ): Promise<{ queued: boolean }> {
+    return this.syncQueue.enqueueBackfill(accountId, mailbox, {
+      force: force === '1' || force === 'true',
+    });
   }
 
   @Get('mail/sync')

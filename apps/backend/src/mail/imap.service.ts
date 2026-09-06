@@ -131,10 +131,7 @@ export class ImapService {
   ): Promise<MessageMetadata[]> {
     return this.withMailbox(accountId, mailbox, async (client) => {
       const serverUids = await client.search({ all: true }, { uid: true }) || [];
-      const candidates = beforeUid
-        ? serverUids.filter((uid) => uid < beforeUid)
-        : serverUids;
-      const pageUids = candidates.slice(-limit);
+      const pageUids = selectBackfillUids(serverUids, beforeUid, limit);
       const messages: MessageMetadata[] = [];
       if (pageUids.length > 0) {
         for await (const message of client.fetch(
@@ -446,6 +443,22 @@ export function selectMetadataUids(
   }
   const highestKnownUid = knownUids.reduce((highest, uid) => Math.max(highest, uid), 0);
   return serverUids.filter((uid) => uid > highestKnownUid).slice(0, limit);
+}
+
+/**
+ * History walk newest→oldest: among UIDs strictly below `beforeUid`
+ * (or the whole folder when unset), take the highest `limit` UIDs.
+ */
+export function selectBackfillUids(
+  serverUids: number[],
+  beforeUid: number | undefined,
+  limit: number,
+): number[] {
+  const candidates = beforeUid === undefined
+    ? serverUids
+    : serverUids.filter((uid) => uid < beforeUid);
+  if (limit <= 0 || candidates.length === 0) return [];
+  return candidates.slice(-limit);
 }
 
 export function prepareClassificationText(text: string, limit = 1_500): string {

@@ -15,6 +15,7 @@ export interface AccountRepositoryContract {
   resetConnectionStatuses(now: string): Promise<void>;
   upsertStored(account: AccountConfig, now: string): Promise<void>;
   list(userId: string | null): Promise<AccountRow[]>;
+  listAll(): Promise<AccountRow[]>;
   find(userId: string | null, accountId: string): Promise<AccountRow | undefined>;
   saveConnected(account: AccountConfig, userId: string | null, now: string): Promise<void>;
   setStatus(
@@ -24,6 +25,17 @@ export interface AccountRepositoryContract {
     now: string,
   ): Promise<void>;
   markSynced(accountId: string, now: string): Promise<void>;
+  recordSyncFailure(
+    accountId: string,
+    error: string,
+    backoffUntil: string,
+    failCount: number,
+    now: string,
+  ): Promise<void>;
+  clearSyncBackoff(accountId: string, now: string): Promise<void>;
+  getSyncBackoff(
+    accountId: string,
+  ): Promise<{ failCount: number; backoffUntil: string | null } | undefined>;
   remove(userId: string | null, accountId: string): Promise<void>;
   clearMailData(accountId: string): Promise<void>;
 }
@@ -31,6 +43,15 @@ export interface AccountRepositoryContract {
 export interface MailRepositoryContract {
   mailboxState(accountId: string, mailbox: string): Promise<string | undefined>;
   knownUids(accountId: string, mailbox: string): Promise<number[]>;
+  folderCursor(
+    accountId: string,
+    mailbox: string,
+  ): Promise<FolderCursor | undefined>;
+  setFolderCursor(
+    accountId: string,
+    mailbox: string,
+    cursor: FolderCursorUpdate,
+  ): Promise<void>;
   applyChanges(
     accountId: string,
     mailbox: string,
@@ -135,4 +156,17 @@ export interface MailRepositoryContract {
   hasMailbox(accountId: string, mailbox: string): Promise<boolean>;
   specialMailbox(accountId: string, specialUse: string): Promise<string | undefined>;
   removeMessage(accountId: string, mailbox: string, uid: number): Promise<void>;
+}
+
+export interface FolderCursor {
+  uidValidity: string | null;
+  lastSeenUid: number | null;
+  /** null = not started; 0 = complete; >0 = resume before this UID. */
+  backfilledUid: number | null;
+}
+
+export interface FolderCursorUpdate {
+  uidValidity?: string | null;
+  lastSeenUid?: number | null;
+  backfilledUid?: number | null;
 }
