@@ -21,6 +21,28 @@ export class OllamaService {
     return process.env.OLLAMA_MODEL ?? 'qwen2.5:7b';
   }
 
+  /** True when the local Ollama HTTP API answers. */
+  async healthy(timeoutMs = 2_000): Promise<boolean> {
+    if (!this.enabled) return false;
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const response = await fetch(`${this.baseUrl}/api/tags`, {
+        signal: controller.signal,
+      });
+      return response.ok;
+    } catch (error) {
+      this.logger.warn(
+        `Ollama недоступен (${this.baseUrl}): ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+      return false;
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
   async classify(input: {
     subject: string | null;
     from: string | null;

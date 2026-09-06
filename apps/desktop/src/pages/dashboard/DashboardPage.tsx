@@ -4,6 +4,7 @@ import { MESSAGE_TAGS } from '@letter-box/contracts';
 import type { AccountStatus } from '../../shared/api/client';
 import { accountColor } from '../../shared/lib/accountColor';
 import {
+  accountErrorHint,
   errorMessage,
   formatRelativeShort,
   providerName,
@@ -49,7 +50,9 @@ export function DashboardPage({
   const importantUnread = statsQuery.data?.unreadByTag.find((row) => row.tag === 'important')?.count ?? 0;
   const awaiting = statsQuery.data?.awaitingReply ?? [];
   const matrix = statsQuery.data?.tagAccountMatrix ?? [];
-  const connected = accounts.filter((account) => account.status === 'connected').length;
+  const healthy = accounts.filter(
+    (account) => account.status === 'connected' || account.status === 'syncing',
+  ).length;
   const lastSync = accounts
     .map((account) => account.lastSyncAt)
     .filter(Boolean)
@@ -105,7 +108,13 @@ export function DashboardPage({
 
   const totalFlow = statsQuery.data?.messagesByDay.reduce((sum, day) => sum + day.count, 0) ?? 0;
   const classified = statsQuery.data?.classifiedCount ?? 0;
+  const pendingCount = statsQuery.data?.pendingCount ?? 0;
+  const failedCount = statsQuery.data?.failedCount ?? 0;
   const totalCount = statsQuery.data?.totalCount ?? 0;
+  const matrixHasVisible = useMemo(() => {
+    const hidden = new Set<string>(HIDDEN_DASHBOARD_TAGS);
+    return matrix.some((row) => !hidden.has(row.tag) && row.count > 0);
+  }, [matrix]);
 
   return (
     <section className="dashboard-page">
@@ -115,7 +124,11 @@ export function DashboardPage({
           <p className="dashboard-subtitle">
             {accounts.length} аккаунт{accounts.length === 1 ? '' : accounts.length < 5 ? 'а' : 'ов'}
             {lastSync ? ` · синхронизировано ${formatRelativeShort(lastSync)}` : ''}
-            {totalCount > 0 ? ` · Ollama разметила ${classified} из ${totalCount}` : ''}
+            {totalCount > 0
+              ? ` · AI ${classified}/${totalCount}`
+                + (pendingCount > 0 ? ` · в очереди ${pendingCount}` : '')
+                + (failedCount > 0 ? ` · ошибок ${failedCount}` : '')
+              : ''}
           </p>
         </div>
         <div className="dashboard-stat-pills">
@@ -157,7 +170,15 @@ export function DashboardPage({
           <header>
             <div>
               <h2>Теги по аккаунтам</h2>
-              <p>строка — все аккаунты · ячейка — один</p>
+              <p>
+                {statsQuery.isError
+                  ? errorMessage(statsQuery.error)
+                  : !matrixHasVisible && (pendingCount > 0 || failedCount > 0)
+                    ? failedCount > 0 && classified === 0
+                      ? `Теги ещё не готовы: ${pendingCount} в очереди, ${failedCount} с ошибкой (нужен Ollama)`
+                      : `Теги строятся: размечено ${classified}, в очереди ${pendingCount}`
+                    : 'строка — все аккаунты · ячейка — один'}
+              </p>
             </div>
           </header>
           <div className="matrix-table-wrap">
@@ -298,7 +319,7 @@ export function DashboardPage({
             <header>
               <div>
                 <h2>Аккаунты</h2>
-                <p>{connected}/{accounts.length} подключено</p>
+                <p>{healthy}/{accounts.length} подключено</p>
               </div>
               <button type="button" className="text-btn" onClick={onAdd}>+ Добавить почту</button>
             </header>
@@ -329,7 +350,7 @@ export function DashboardPage({
                             {account.status === 'needs_reauth'
                               ? 'нужна повторная авторизация'
                               : account.status === 'error' && account.lastError
-                              ? 'нужен повторный вход'
+                              ? accountErrorHint(account.lastError)
                               : syncingIds.has(account.id)
                                 ? 'синхр. сейчас'
                                 : statusName(account.status).toLowerCase()}
@@ -343,6 +364,7 @@ export function DashboardPage({
                       <div className="account-row-actions">
                         <Switch
                           size="xs"
+                          aria-label="Авто-синхронизация"
                           checked={!disabled}
                           onChange={(event) => setAccountSync(account.id, event.currentTarget.checked)}
                           title="Авто-синхронизация"
@@ -405,22 +427,31 @@ export function DashboardPage({
               </div>
             </header>
             <div className="sync-settings">
-              <Select
-                size="xs"
-                label="Интервал"
-                value={String(preferences.intervalMinutes)}
-                data={[
-                  { value: '5', label: '5 минут' },
-                  { value: '15', label: '15 минут' },
-                  { value: '30', label: '30 минут' },
-                ]}
-                onChange={(value) => value && setIntervalMinutes(Number(value))}
-              />
-              <Switch
-                label="Уведомления о новых письмах"
-                checked={preferences.notifications}
-                onChange={(event) => void setNotifications(event.currentTarget.checked)}
-              />
+              <label className="sync-field">
+                <span className="sync-field-label">Интервал</span>
+                <Select
+                  size="sm"
+                  aria-label="Интервал синхронизации"
+                  value={String(preferences.intervalMinutes)}
+                  data={[
+                    { value: '5', label: '5 минут' },
+                    { value: '15', label: '15 минут' },
+                    { value: '30', label: '30 минут' },
+                  ]}
+                  onChange={(value) => value && setIntervalMinutes(Number(value))}
+                />
+              </label>
+              <div className="sync-toggle">
+                <div className="sync-toggle-copy">
+                  <strong>Уведомления</strong>
+                  <span>О новых письмах в фоне</span>
+                </div>
+                <Switch
+                  aria-label="Уведомления о новых письмах"
+                  checked={preferences.notifications}
+                  onChange={(event) => void setNotifications(event.currentTarget.checked)}
+                />
+              </div>
             </div>
           </section>
         </aside>

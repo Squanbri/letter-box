@@ -16,6 +16,13 @@ loadEnvFiles([
 
 app.setName('Letter Box');
 app.setPath('userData', join(app.getPath('appData'), 'Letter Box'));
+if (process.platform === 'darwin') {
+  app.setAboutPanelOptions({
+    applicationName: 'Letter Box',
+    applicationVersion: app.getVersion(),
+    copyright: '© Evgeniy Markitan',
+  });
+}
 const logPath = join(app.getPath('userData'), 'logs', 'main.log');
 const apiUrl = process.env.LETTER_BOX_API_URL ?? 'http://127.0.0.1:3000';
 installFileLogger(logPath);
@@ -121,9 +128,19 @@ let mainWindow: BrowserWindow | null = null;
 function resolveAppIcon(): string | undefined {
   const candidates = [
     join(process.resourcesPath, 'icon.png'),
+    join(__dirname, '../build/icon-mac.png'),
     join(__dirname, '../build/icon.png'),
   ];
   return candidates.find((path) => existsSync(path));
+}
+
+function applyDockIcon(iconPath?: string): void {
+  if (process.platform !== 'darwin' || !iconPath) return;
+  try {
+    app.dock?.setIcon(iconPath);
+  } catch (error) {
+    console.warn('Не удалось установить иконку Dock', error);
+  }
 }
 
 function attachWindowGuards(window: BrowserWindow): void {
@@ -144,11 +161,13 @@ function attachWindowGuards(window: BrowserWindow): void {
 
 const createWindow = (): BrowserWindow => {
   const icon = resolveAppIcon();
+  applyDockIcon(icon);
   const window = new BrowserWindow({
     width: 1440,
     height: 900,
     minWidth: 820,
     minHeight: 540,
+    title: 'Letter Box',
     titleBarStyle: 'hidden',
     backgroundColor: '#fbfaf7',
     ...(icon ? { icon } : {}),
@@ -170,6 +189,7 @@ function createComposeWindow(composeId: string): BrowserWindow {
     height: 720,
     minWidth: 800,
     minHeight: 520,
+    title: 'Letter Box',
     titleBarStyle: 'hidden',
     backgroundColor: '#fbfaf7',
     ...(icon ? { icon } : {}),
@@ -204,6 +224,7 @@ async function loadApplication(
 }
 
 void app.whenReady().then(async () => {
+  applyDockIcon(resolveAppIcon());
   mainWindow = createWindow();
   await loadApplication(mainWindow);
   app.on('activate', () => {

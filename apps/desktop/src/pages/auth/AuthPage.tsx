@@ -10,6 +10,7 @@ import {
 } from '@mantine/core';
 import { api } from '../../shared/api/client';
 import { errorMessage } from '../../shared/lib/format';
+import { BrandLogo } from '../../shared/ui/BrandLogo';
 import { useAuth } from '../../state/auth/AuthProvider';
 
 export function AuthPage() {
@@ -35,9 +36,11 @@ export function AuthPage() {
             .finally(() => setPending(false));
         }}>
           <Stack>
-            <div className="status-mark">✉</div>
+            <div className="status-mark">
+              <BrandLogo size={28} />
+            </div>
             <div>
-              <Text className="eyebrow">Letter Box Server</Text>
+              <Text className="eyebrow">Letter Box</Text>
               <Title order={2}>{mode === 'login' ? 'Вход' : 'Создание пользователя'}</Title>
               <Text size="sm" c="dimmed" mt="xs">Авторизуйтесь, чтобы получить доступ только к своим почтовым аккаунтам.</Text>
             </div>

@@ -16,6 +16,7 @@
   "scripts": {
     "dev": "concurrently -k -n api,worker,desktop -c blue,cyan,magenta \"npm run dev:api -w @letter-box/server\" \"npm run dev:worker -w @letter-box/server\" \"npm run dev -w @letter-box/desktop\"",
     "infra:up": "docker compose up -d postgres redis",
+    "infra:ai": "docker compose --profile ai up -d ollama",
     "server:up": "docker compose up -d --build server worker",
     "server:down": "docker compose down",
     "infra:down": "docker compose down",

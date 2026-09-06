@@ -28,6 +28,11 @@ const METADATA_FETCH = {
   headers: ['references'] as string[],
 };
 
+/** Mail.ru (and some others) drop long single FETCH; keep ranges modest. */
+const FLAG_FETCH_CHUNK = 500;
+const CLASSIFICATION_FETCH_CHUNK = 50;
+const TRANSIENT_IMAP_RETRIES = 2;
+
 @Injectable()
 export class ImapService {
   constructor(
@@ -92,9 +97,9 @@ export class ImapService {
       }
       const existingUids = serverUids.filter((uid) => knownSet.has(uid));
       const flagUpdates: MessageFlags[] = [];
-      if (existingUids.length > 0) {
+      for (const chunk of chunkUids(existingUids, FLAG_FETCH_CHUNK)) {
         for await (const message of client.fetch(
-          existingUids,
+          chunk,
           { uid: true, flags: true },
           { uid: true },
         )) {
@@ -259,24 +264,26 @@ export class ImapService {
   ): Promise<ClassificationPreparation[]> {
     if (uids.length === 0) return [];
     const preparations: ClassificationPreparation[] = [];
-    for await (const message of client.fetch(
-      uids,
-      { uid: true, source: true },
-      { uid: true },
-    )) {
-      if (!message.source) {
-        preparations.push({ uid: message.uid, text: null, status: 'failed' });
-        continue;
-      }
-      try {
-        const text = await parseClassificationSource(message.source);
-        preparations.push({
-          uid: message.uid,
-          text: text || null,
-          status: text ? 'pending' : 'failed',
-        });
-      } catch {
-        preparations.push({ uid: message.uid, text: null, status: 'failed' });
+    for (const chunk of chunkUids(uids, CLASSIFICATION_FETCH_CHUNK)) {
+      for await (const message of client.fetch(
+        chunk,
+        { uid: true, source: true },
+        { uid: true },
+      )) {
+        if (!message.source) {
+          preparations.push({ uid: message.uid, text: null, status: 'failed' });
+          continue;
+        }
+        try {
+          const text = await parseClassificationSource(message.source);
+          preparations.push({
+            uid: message.uid,
+            text: text || null,
+            status: text ? 'pending' : 'failed',
+          });
+        } catch {
+          preparations.push({ uid: message.uid, text: null, status: 'failed' });
+        }
       }
     }
     return preparations;
@@ -287,31 +294,57 @@ export class ImapService {
     operation: (client: ImapFlow) => Promise<T>,
   ): Promise<T> {
     const account = await this.tokens.ensureFresh(accountId);
-    try {
-      return await this.connectAndRun(account, operation);
-    } catch (error) {
-      if (error instanceof BadGatewayException) throw error;
-      if (
-        account.authType === 'oauth'
-        && this.isAuthenticationError(error, this.errorMessage(error))
-      ) {
-        try {
-          const refreshed = await this.tokens.refresh(this.accounts.getConfig(accountId));
-          return await this.connectAndRun(refreshed, operation);
-        } catch (retryError) {
-          if (retryError instanceof BadGatewayException) throw retryError;
-          await this.accounts.setStatus(
-            accountId,
-            'needs_reauth',
-            'Требуется повторная авторизация почтового ящика',
-          );
-          throw new BadGatewayException(
-            'Сессия почтового ящика истекла. Подключите аккаунт заново.',
-          );
+    let lastError: unknown;
+    for (let attempt = 0; attempt <= TRANSIENT_IMAP_RETRIES; attempt += 1) {
+      try {
+        return await this.connectAndRun(account, operation);
+      } catch (error) {
+        if (error instanceof BadGatewayException) throw error;
+        lastError = error;
+        if (
+          account.authType === 'oauth'
+          && this.isAuthenticationError(error, this.errorMessage(error))
+        ) {
+          try {
+            const refreshed = await this.tokens.refresh(this.accounts.getConfig(accountId));
+            return await this.connectAndRun(refreshed, operation);
+          } catch (retryError) {
+            if (retryError instanceof BadGatewayException) throw retryError;
+            await this.accounts.setStatus(
+              accountId,
+              'needs_reauth',
+              'Требуется повторная авторизация почтового ящика',
+            );
+            throw new BadGatewayException(
+              'Сессия почтового ящика истекла. Подключите аккаунт заново.',
+            );
+          }
         }
+        if (
+          attempt < TRANSIENT_IMAP_RETRIES
+          && this.isTransientConnectionError(error)
+        ) {
+          console.warn('[backend:imap] Временный обрыв IMAP, повтор', {
+            provider: account.provider,
+            user: this.maskEmail(account.email),
+            attempt: attempt + 1,
+            message: this.errorMessage(error),
+          });
+          await sleep(500 * (attempt + 1));
+          continue;
+        }
+        throw this.wrapImapError(accountId, error);
       }
-      throw this.wrapImapError(accountId, error);
     }
+    throw this.wrapImapError(accountId, lastError);
+  }
+
+  private isTransientConnectionError(error: unknown): boolean {
+    const record = error as Record<string, unknown> | null;
+    const message = this.errorMessage(error);
+    return record?.code === 'NoConnection'
+      || /Connection not available|ECONNRESET|EPIPE|ETIMEDOUT|socket hang up|closed/i
+        .test(message);
   }
 
   private async connectAndRun<T>(
@@ -431,6 +464,19 @@ export class ImapService {
       threadId: computeThreadId(messageId, inReplyTo, references),
     };
   }
+}
+
+function chunkUids(uids: number[], size: number): number[][] {
+  if (uids.length === 0) return [];
+  const chunks: number[][] = [];
+  for (let i = 0; i < uids.length; i += size) {
+    chunks.push(uids.slice(i, i + size));
+  }
+  return chunks;
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 export function selectMetadataUids(

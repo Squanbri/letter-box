@@ -209,19 +209,13 @@ export class PrismaMailRepository {
     offset: number,
     tag?: string,
   ): Promise<MessageRow[]> {
-    const rows = await this.database.client.message.findMany({
-      where: {
-        accountId,
-        mailbox,
-        ...(tag
-          ? { tags: { array_contains: [tag] } }
-          : {}),
-      },
-      orderBy: [{ receivedAt: 'desc' }, { uid: 'desc' }],
-      take: limit,
-      skip: offset,
+    const rows = await this.listMessagesRaw([accountId], {
+      mailbox,
+      limit,
+      offset,
+      tag,
     });
-    return rows.map((row) => this.normalizeMessage(row));
+    return rows;
   }
 
   async listInbox(
@@ -240,35 +234,87 @@ export class PrismaMailRepository {
     // slice first depending on the plan/index; this keeps chronology correct.
     const window = options.offset + options.limit;
     const batches = await Promise.all(accountIds.map((accountId) => (
-      this.database.client.message.findMany({
-        where: {
-          accountId,
-          mailbox: options.mailbox,
-          ...(options.tag
-            ? { tags: { array_contains: [options.tag] } }
-            : {}),
-          ...(options.unreadOnly
-            ? {
-              NOT: {
-                flags: {
-                  array_contains: '\\Seen',
-                },
-              },
-            }
-            : {}),
-        },
-        orderBy: [{ receivedAt: 'desc' }, { uid: 'desc' }],
-        take: window,
+      this.listMessagesRaw([accountId], {
+        mailbox: options.mailbox,
+        limit: window,
+        offset: 0,
+        unreadOnly: options.unreadOnly,
+        tag: options.tag,
       })
     )));
     return batches
       .flat()
       .sort((left, right) => {
-        const byDate = right.receivedAt.getTime() - left.receivedAt.getTime();
-        return byDate !== 0 ? byDate : Number(right.uid) - Number(left.uid);
+        const byDate = Date.parse(right.received_at) - Date.parse(left.received_at);
+        return byDate !== 0 ? byDate : right.uid - left.uid;
       })
-      .slice(options.offset, options.offset + options.limit)
-      .map((row) => this.normalizeMessage(row));
+      .slice(options.offset, options.offset + options.limit);
+  }
+
+  private async listMessagesRaw(
+    accountIds: string[],
+    options: {
+      mailbox: string;
+      limit: number;
+      offset: number;
+      unreadOnly?: boolean;
+      tag?: string;
+    },
+  ): Promise<MessageRow[]> {
+    if (accountIds.length === 0) return [];
+    const rows = await this.database.client.$queryRaw<Array<{
+      accountId: string;
+      mailbox: string;
+      uid: bigint;
+      subject: string | null;
+      senderName: string | null;
+      senderAddress: string | null;
+      receivedAt: Date;
+      flags: Prisma.JsonValue;
+      size: bigint;
+      bodyText: string | null;
+      bodyHtml: string | null;
+      bodyLoadedAt: Date | null;
+      classificationText: string | null;
+      classificationStatus: string;
+      classifiedAt: Date | null;
+      tags: Prisma.JsonValue;
+      messageId: string | null;
+      inReplyTo: string | null;
+      referencesHeader: string | null;
+      threadId: string | null;
+    }>>(Prisma.sql`
+      SELECT
+        account_id AS "accountId",
+        mailbox,
+        uid,
+        subject,
+        sender_name AS "senderName",
+        sender_address AS "senderAddress",
+        received_at AS "receivedAt",
+        flags,
+        size,
+        body_text AS "bodyText",
+        body_html AS "bodyHtml",
+        body_loaded_at AS "bodyLoadedAt",
+        classification_text AS "classificationText",
+        tag_status AS "classificationStatus",
+        tagged_at AS "classifiedAt",
+        tags,
+        message_id AS "messageId",
+        in_reply_to AS "inReplyTo",
+        references_header AS "referencesHeader",
+        thread_id AS "threadId"
+      FROM messages
+      WHERE account_id IN (${Prisma.join(accountIds)})
+        AND mailbox = ${options.mailbox}
+        ${options.tag ? Prisma.sql`AND tags ? ${options.tag}` : Prisma.empty}
+        ${options.unreadOnly ? Prisma.sql`AND NOT (flags ? ${'\\Seen'})` : Prisma.empty}
+      ORDER BY received_at DESC, uid DESC
+      LIMIT ${options.limit}
+      OFFSET ${options.offset}
+    `);
+    return rows.map((row) => this.normalizeMessage(row));
   }
 
   async tagCounts(
@@ -318,11 +364,12 @@ export class PrismaMailRepository {
       Prisma.sql`
         SELECT tag, COUNT(*)::bigint AS count
         FROM messages
-        CROSS JOIN LATERAL jsonb_array_elements_text(tags::jsonb) AS tag
+        CROSS JOIN LATERAL jsonb_array_elements_text(tags) AS tag
         WHERE account_id IN (${Prisma.join(accountIds)})
           AND mailbox = ${mailbox}
+          AND tag_status IN ('tagged', 'completed', 'done')
           ${unreadOnly
-            ? Prisma.sql`AND NOT (flags::jsonb @> '["\\\\Seen"]'::jsonb)`
+            ? Prisma.sql`AND NOT (flags ? ${'\\Seen'})`
             : Prisma.empty}
         GROUP BY tag
         ORDER BY count DESC, tag ASC
@@ -353,12 +400,13 @@ export class PrismaMailRepository {
           account_id,
           COUNT(*)::bigint AS count,
           COUNT(*) FILTER (
-            WHERE NOT (flags::jsonb @> '["\\\\Seen"]'::jsonb)
+            WHERE NOT (flags ? ${'\\Seen'})
           )::bigint AS unread_count
         FROM messages
-        CROSS JOIN LATERAL jsonb_array_elements_text(tags::jsonb) AS tag
+        CROSS JOIN LATERAL jsonb_array_elements_text(tags) AS tag
         WHERE account_id IN (${Prisma.join(accountIds)})
           AND mailbox = ${mailbox}
+          AND tag_status IN ('tagged', 'completed', 'done')
         GROUP BY tag, account_id
         ORDER BY tag ASC, account_id ASC
       `,
@@ -399,10 +447,10 @@ export class PrismaMailRepository {
         FROM messages
         WHERE account_id IN (${Prisma.join(accountIds)})
           AND mailbox = ${mailbox}
-          AND flags::jsonb @> '["\\\\Seen"]'::jsonb
-          AND NOT (flags::jsonb @> '["\\\\Answered"]'::jsonb)
-          AND NOT (flags::jsonb @> '["\\\\Draft"]'::jsonb)
-        ORDER BY received_at ASC
+          AND flags ? ${'\\Seen'}
+          AND NOT (flags ? ${'\\Answered'})
+          AND NOT (flags ? ${'\\Draft'})
+        ORDER BY received_at DESC
         LIMIT ${limit}
       `,
     );
@@ -420,19 +468,28 @@ export class PrismaMailRepository {
   async messageTotals(
     accountIds: string[],
     mailbox: string,
-  ): Promise<{ total: number; classified: number }> {
-    if (accountIds.length === 0) return { total: 0, classified: 0 };
+  ): Promise<{ total: number; classified: number; pending: number; failed: number }> {
+    if (accountIds.length === 0) {
+      return { total: 0, classified: 0, pending: 0, failed: 0 };
+    }
     const rows = await this.database.client.$queryRaw<Array<{
       total: bigint;
       classified: bigint;
+      pending: bigint;
+      failed: bigint;
     }>>(
       Prisma.sql`
         SELECT
           COUNT(*)::bigint AS total,
           COUNT(*) FILTER (
             WHERE tag_status IN ('tagged', 'completed', 'done')
-              OR jsonb_array_length(COALESCE(tags::jsonb, '[]'::jsonb)) > 0
-          )::bigint AS classified
+          )::bigint AS classified,
+          COUNT(*) FILTER (
+            WHERE tag_status IN ('pending', 'processing')
+          )::bigint AS pending,
+          COUNT(*) FILTER (
+            WHERE tag_status = 'failed'
+          )::bigint AS failed
         FROM messages
         WHERE account_id IN (${Prisma.join(accountIds)})
           AND mailbox = ${mailbox}
@@ -442,6 +499,8 @@ export class PrismaMailRepository {
     return {
       total: Number(row?.total ?? 0),
       classified: Number(row?.classified ?? 0),
+      pending: Number(row?.pending ?? 0),
+      failed: Number(row?.failed ?? 0),
     };
   }
 

@@ -1,10 +1,13 @@
 import 'reflect-metadata';
+import { config as loadEnv } from 'dotenv';
+import { resolve } from 'node:path';
 import { NestFactory } from '@nestjs/core';
 import { Worker } from 'bullmq';
 import { AppModule } from './app.module';
 import { AccountService } from './account/account.service';
 import { FileCredentialStore } from './account/file-credential.store';
 import { ClassificationService } from './ai/classification.service';
+import { OllamaService } from './ai/ollama.service';
 import { MailService } from './mail/mail.service';
 import { TokenService } from './account/token.service';
 import { configureRuntime } from './runtime';
@@ -30,6 +33,10 @@ import {
   SyncJobData,
 } from './sync/sync-queue.types';
 
+loadEnv({ path: resolve(process.cwd(), '../../.env') });
+loadEnv({ path: resolve(process.cwd(), '.env') });
+loadEnv({ path: resolve(__dirname, '../../../.env') });
+
 async function startWorker(): Promise<void> {
   process.env.LETTER_BOX_PROCESS_ROLE = 'worker';
   const redisUrl = process.env.REDIS_URL;
@@ -40,6 +47,7 @@ async function startWorker(): Promise<void> {
   const accounts = application.get(AccountService);
   const mail = application.get(MailService);
   const classification = application.get(ClassificationService);
+  const ollama = application.get(OllamaService);
   const tokens = application.get(TokenService);
   const syncQueue = application.get(SyncQueueService);
   const scheduler = application.get(SyncSchedulerService);
@@ -138,6 +146,22 @@ async function startWorker(): Promise<void> {
     model: process.env.OLLAMA_MODEL ?? 'qwen2.5:7b',
     concurrency: 1,
   });
+
+  const ollamaOk = await ollama.healthy();
+  console.info('[worker:tag] ollama', {
+    url: ollama.baseUrl,
+    model: ollama.model,
+    healthy: ollamaOk,
+  });
+  if (ollamaOk) {
+    const recovered = await classification.requeueFailed(2_000);
+    const enqueued = await classification.enqueuePendingSweep(300);
+    console.info('[worker:tag] boot catch-up', { recovered, enqueued });
+  } else {
+    console.warn(
+      '[worker:tag] Ollama не отвечает — теги появятся только после запуска ollama serve',
+    );
+  }
 
   const tokenWorker = new Worker(
     TOKEN_REFRESH_QUEUE_NAME,
