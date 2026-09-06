@@ -8,27 +8,40 @@ import {
 } from '@nestjs/common';
 import { createHash } from 'node:crypto';
 import { Job, Queue, QueueEvents } from 'bullmq';
-import type { SyncResult, SyncStatus } from '@letter-box/contracts';
+import type {
+  BackfillResult,
+  SyncResult,
+  SyncStatus,
+} from '@letter-box/contracts';
+import {
+  MAIL_REPOSITORY,
+  MailRepositoryContract,
+} from '../database/repository.contracts';
 import { EventsGateway } from '../events/events.gateway';
 import {
+  BACKFILL_COMPLETE_UID,
+  BACKFILL_JOB,
+  MailboxJobData,
+  MailboxJobResult,
+  SYNC_JOB,
   SYNC_QUEUE_NAME,
-  SyncJobData,
   SyncJobResult,
 } from './sync-queue.types';
 
 @Injectable()
 export class SyncQueueService implements OnModuleInit, OnModuleDestroy {
-  private queue?: Queue<SyncJobData, SyncJobResult>;
+  private queue?: Queue<MailboxJobData, MailboxJobResult>;
   private events?: QueueEvents;
-  private readonly activeJobs = new Map<string, SyncJobData>();
+  private readonly activeJobs = new Map<string, { name: string; data: MailboxJobData }>();
 
   constructor(
     @Inject(EventsGateway) private readonly gateway: EventsGateway,
+    @Inject(MAIL_REPOSITORY) private readonly mail: MailRepositoryContract,
   ) {}
 
   async onModuleInit(): Promise<void> {
     const connection = this.connection();
-    this.queue = new Queue<SyncJobData, SyncJobResult>(
+    this.queue = new Queue<MailboxJobData, MailboxJobResult>(
       SYNC_QUEUE_NAME,
       {
         connection,
@@ -45,7 +58,7 @@ export class SyncQueueService implements OnModuleInit, OnModuleDestroy {
       void this.publishStarted(jobId);
     });
     this.events.on('completed', ({ jobId, returnvalue }) => {
-      void this.publishCompleted(jobId, this.parseResult(returnvalue));
+      void this.publishCompleted(jobId, returnvalue);
     });
     this.events.on('failed', ({ jobId, failedReason }) => {
       void this.publishFailed(jobId, failedReason);
@@ -68,18 +81,60 @@ export class SyncQueueService implements OnModuleInit, OnModuleDestroy {
       throw new ServiceUnavailableException('Очередь синхронизации недоступна');
     }
     const job = await this.queue.add(
-      'sync',
+      SYNC_JOB,
       { accountId, mailbox },
-      { jobId: this.jobId(accountId, mailbox) },
+      { jobId: this.syncJobId(accountId, mailbox) },
     );
     try {
-      return await job.waitUntilFinished(this.events, 20 * 60 * 1_000);
+      return await job.waitUntilFinished(this.events, 20 * 60 * 1_000) as SyncResult;
     } catch (error) {
       const message = error instanceof Error
         ? error.message
         : 'Неизвестная ошибка sync worker';
       throw new BadGatewayException(message);
     }
+  }
+
+  /** Fire-and-forget incremental sync (used after account connect). */
+  async enqueueSync(
+    accountId: string,
+    mailbox: string,
+  ): Promise<{ queued: true }> {
+    if (!this.queue) {
+      throw new ServiceUnavailableException('Очередь синхронизации недоступна');
+    }
+    await this.queue.add(
+      SYNC_JOB,
+      { accountId, mailbox },
+      { jobId: this.syncJobId(accountId, mailbox) },
+    );
+    return { queued: true };
+  }
+
+  /**
+   * Fire-and-forget history backfill. Deduped per folder via stable jobId.
+   * No-ops when Folder.backfilledUid is already the complete sentinel (unless force).
+   */
+  async enqueueBackfill(
+    accountId: string,
+    mailbox: string,
+    options: { force?: boolean } = {},
+  ): Promise<{ queued: boolean }> {
+    if (!this.queue) {
+      throw new ServiceUnavailableException('Очередь синхронизации недоступна');
+    }
+    if (!options.force) {
+      const cursor = await this.mail.folderCursor(accountId, mailbox);
+      if (cursor?.backfilledUid === BACKFILL_COMPLETE_UID) {
+        return { queued: false };
+      }
+    }
+    await this.queue.add(
+      BACKFILL_JOB,
+      { accountId, mailbox, force: options.force },
+      { jobId: this.backfillJobId(accountId, mailbox) },
+    );
+    return { queued: true };
   }
 
   async status(accountId: string): Promise<SyncStatus> {
@@ -91,12 +146,16 @@ export class SyncQueueService implements OnModuleInit, OnModuleDestroy {
       0,
       999,
     );
+    const syncing = new Set<string>();
+    const backfilling = new Set<string>();
+    for (const job of jobs) {
+      if (job.data.accountId !== accountId) continue;
+      if (job.name === BACKFILL_JOB) backfilling.add(job.data.mailbox);
+      else syncing.add(job.data.mailbox);
+    }
     return {
-      mailboxes: [...new Set(
-        jobs
-          .filter((job) => job.data.accountId === accountId)
-          .map((job) => job.data.mailbox),
-      )],
+      mailboxes: [...syncing],
+      backfilling: [...backfilling],
     };
   }
 
@@ -117,49 +176,89 @@ export class SyncQueueService implements OnModuleInit, OnModuleDestroy {
     return { url };
   }
 
-  private jobId(accountId: string, mailbox: string): string {
+  private syncJobId(accountId: string, mailbox: string): string {
     return createHash('sha256')
-      .update(`${accountId}\0${mailbox}`)
+      .update(`sync\0${accountId}\0${mailbox}`)
       .digest('base64url');
   }
 
-  private async getJob(jobId: string): Promise<Job<SyncJobData> | undefined> {
+  private backfillJobId(accountId: string, mailbox: string): string {
+    return createHash('sha256')
+      .update(`backfill\0${accountId}\0${mailbox}`)
+      .digest('base64url');
+  }
+
+  private async getJob(jobId: string): Promise<Job<MailboxJobData> | undefined> {
     return this.queue?.getJob(jobId);
   }
 
   private async publishStarted(jobId: string): Promise<void> {
     const job = await this.getJob(jobId);
     if (!job) return;
-    this.activeJobs.set(jobId, job.data);
+    this.activeJobs.set(jobId, { name: job.name, data: job.data });
+    if (job.name === BACKFILL_JOB) {
+      this.gateway.publish({ type: 'backfill.started', ...job.data });
+      return;
+    }
     this.gateway.publish({ type: 'sync.started', ...job.data });
   }
 
   private async publishCompleted(
     jobId: string,
-    result: SyncResult,
+    returnvalue: string | MailboxJobResult,
   ): Promise<void> {
-    const data = this.activeJobs.get(jobId) ?? (await this.getJob(jobId))?.data;
+    const tracked = this.activeJobs.get(jobId) ?? await this.lookupActive(jobId);
     this.activeJobs.delete(jobId);
-    if (!data) return;
+    if (!tracked) return;
+    if (tracked.name === BACKFILL_JOB) {
+      this.gateway.publish({
+        type: 'backfill.completed',
+        ...tracked.data,
+        result: this.parseBackfillResult(returnvalue),
+      });
+      return;
+    }
     this.gateway.publish({
       type: 'sync.completed',
-      ...data,
-      result,
+      ...tracked.data,
+      result: this.parseSyncResult(returnvalue),
     });
   }
 
   private async publishFailed(jobId: string, error: string): Promise<void> {
-    const data = this.activeJobs.get(jobId) ?? (await this.getJob(jobId))?.data;
+    const tracked = this.activeJobs.get(jobId) ?? await this.lookupActive(jobId);
     this.activeJobs.delete(jobId);
-    if (!data) return;
+    if (!tracked) return;
+    if (tracked.name === BACKFILL_JOB) {
+      this.gateway.publish({
+        type: 'backfill.failed',
+        ...tracked.data,
+        error,
+      });
+      return;
+    }
     this.gateway.publish({
       type: 'sync.failed',
-      ...data,
+      ...tracked.data,
       error,
     });
   }
 
-  private parseResult(value: string): SyncResult {
+  private async lookupActive(
+    jobId: string,
+  ): Promise<{ name: string; data: MailboxJobData } | undefined> {
+    const job = await this.getJob(jobId);
+    if (!job) return undefined;
+    return { name: job.name, data: job.data };
+  }
+
+  private parseSyncResult(value: string | MailboxJobResult): SyncResult {
+    if (typeof value !== 'string') return value as SyncJobResult;
     return JSON.parse(value) as SyncResult;
+  }
+
+  private parseBackfillResult(value: string | MailboxJobResult): BackfillResult {
+    if (typeof value !== 'string') return value as BackfillResult;
+    return JSON.parse(value) as BackfillResult;
   }
 }

@@ -28,6 +28,87 @@ export class PrismaMailRepository {
     return state?.uidValidity;
   }
 
+  async folderCursor(
+    accountId: string,
+    mailbox: string,
+  ): Promise<{
+    uidValidity: string | null;
+    lastSeenUid: number | null;
+    backfilledUid: number | null;
+  } | undefined> {
+    const row = await this.database.client.mailbox.findUnique({
+      where: { accountId_path: { accountId, path: mailbox } },
+      select: {
+        uidValidity: true,
+        lastSeenUid: true,
+        backfilledUid: true,
+      },
+    });
+    if (!row) return undefined;
+    return {
+      uidValidity: row.uidValidity,
+      lastSeenUid: row.lastSeenUid === null ? null : Number(row.lastSeenUid),
+      backfilledUid: row.backfilledUid === null ? null : Number(row.backfilledUid),
+    };
+  }
+
+  async setFolderCursor(
+    accountId: string,
+    mailbox: string,
+    cursor: {
+      uidValidity?: string | null;
+      lastSeenUid?: number | null;
+      backfilledUid?: number | null;
+    },
+  ): Promise<void> {
+    const data = {
+      ...(cursor.uidValidity !== undefined
+        ? { uidValidity: cursor.uidValidity }
+        : {}),
+      ...(cursor.lastSeenUid !== undefined
+        ? {
+          lastSeenUid: cursor.lastSeenUid === null
+            ? null
+            : BigInt(cursor.lastSeenUid),
+        }
+        : {}),
+      ...(cursor.backfilledUid !== undefined
+        ? {
+          backfilledUid: cursor.backfilledUid === null
+            ? null
+            : BigInt(cursor.backfilledUid),
+        }
+        : {}),
+    };
+    if (Object.keys(data).length === 0) return;
+
+    const updated = await this.database.client.mailbox.updateMany({
+      where: { accountId, path: mailbox },
+      data,
+    });
+    if (updated.count > 0) return;
+
+    await this.database.client.mailbox.create({
+      data: {
+        accountId,
+        path: mailbox,
+        name: mailbox,
+        delimiter: '/',
+        specialUse: mailbox.toUpperCase() === 'INBOX' ? '\\Inbox' : null,
+        totalCount: 0,
+        unreadCount: 0,
+        listedAt: new Date(),
+        uidValidity: cursor.uidValidity ?? null,
+        lastSeenUid: cursor.lastSeenUid == null
+          ? null
+          : BigInt(cursor.lastSeenUid),
+        backfilledUid: cursor.backfilledUid == null
+          ? null
+          : BigInt(cursor.backfilledUid),
+      },
+    });
+  }
+
   async knownUids(accountId: string, mailbox: string): Promise<number[]> {
     const messages = await this.database.client.message.findMany({
       where: { accountId, mailbox },
@@ -53,6 +134,42 @@ export class PrismaMailRepository {
         where: { accountId_mailbox: { accountId, mailbox } },
         create: { accountId, mailbox, uidValidity: changes.uidValidity },
         update: { uidValidity: changes.uidValidity },
+      });
+
+      const highestFetched = changes.messages.reduce(
+        (highest, message) => Math.max(highest, message.uid),
+        0,
+      );
+      const highestServer = changes.serverUids.reduce(
+        (highest, uid) => Math.max(highest, uid),
+        0,
+      );
+      const lastSeenUid = Math.max(highestFetched, highestServer) || null;
+      await transaction.mailbox.upsert({
+        where: { accountId_path: { accountId, path: mailbox } },
+        create: {
+          accountId,
+          path: mailbox,
+          name: mailbox,
+          delimiter: '/',
+          specialUse: mailbox.toUpperCase() === 'INBOX' ? '\\Inbox' : null,
+          totalCount: changes.serverUids.length,
+          unreadCount: 0,
+          listedAt: new Date(),
+          uidValidity: changes.uidValidity,
+          lastSeenUid: lastSeenUid === null ? null : BigInt(lastSeenUid),
+          backfilledUid: null,
+        },
+        update: {
+          uidValidity: changes.uidValidity,
+          ...(lastSeenUid === null ? {} : { lastSeenUid: BigInt(lastSeenUid) }),
+          ...(changes.reset
+            ? {
+              backfilledUid: null,
+              lastSeenUid: lastSeenUid === null ? null : BigInt(lastSeenUid),
+            }
+            : {}),
+        },
       });
 
       for (const message of changes.messages) {

@@ -235,6 +235,13 @@ export interface SyncResult {
   removed: number;
 }
 
+export interface BackfillResult {
+  done: boolean;
+  loaded: number;
+  /** Lowest UID reached; 0 means history backfill finished. */
+  backfilledUid: number | null;
+}
+
 export interface SendMessageInput {
   to: string[];
   cc?: string[];
@@ -254,6 +261,7 @@ export interface SendMessageResult {
 
 export interface SyncStatus {
   mailboxes: string[];
+  backfilling: string[];
 }
 
 export interface TagAccountCount {
@@ -328,6 +336,19 @@ export type ServerEvent =
   }
   | {
     type: 'sync.failed';
+    accountId: string;
+    mailbox: string;
+    error: string;
+  }
+  | { type: 'backfill.started'; accountId: string; mailbox: string }
+  | {
+    type: 'backfill.completed';
+    accountId: string;
+    mailbox: string;
+    result: BackfillResult;
+  }
+  | {
+    type: 'backfill.failed';
     accountId: string;
     mailbox: string;
     error: string;

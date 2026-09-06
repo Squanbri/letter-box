@@ -8,11 +8,15 @@ import { ClassificationService } from './ai/classification.service';
 import { MailService } from './mail/mail.service';
 import { TokenService } from './account/token.service';
 import { configureRuntime } from './runtime';
+import { SyncQueueService } from './sync/sync-queue.service';
 import {
+  BACKFILL_JOB,
+  BackfillJobData,
+  MailboxJobData,
+  MailboxJobResult,
   SYNC_QUEUE_NAME,
   TOKEN_REFRESH_QUEUE_NAME,
   SyncJobData,
-  SyncJobResult,
 } from './sync/sync-queue.types';
 
 async function startWorker(): Promise<void> {
@@ -26,22 +30,40 @@ async function startWorker(): Promise<void> {
   const mail = application.get(MailService);
   const classification = application.get(ClassificationService);
   const tokens = application.get(TokenService);
-  const worker = new Worker<SyncJobData, SyncJobResult>(
+  const syncQueue = application.get(SyncQueueService);
+  const worker = new Worker<MailboxJobData, MailboxJobResult>(
     SYNC_QUEUE_NAME,
     async (job) => {
       await accounts.reloadCredential(job.data.accountId);
-      const result = await mail.syncMailbox(job.data.accountId, job.data.mailbox);
+      if (job.name === BACKFILL_JOB) {
+        const data = job.data as BackfillJobData;
+        return mail.backfillMailbox(data.accountId, data.mailbox, {
+          force: data.force,
+        });
+      }
+      const data = job.data as SyncJobData;
+      const result = await mail.syncMailbox(data.accountId, data.mailbox);
       void classification.processBatch();
+      // After incremental catch-up, kick off one-shot history if needed.
+      void syncQueue.enqueueBackfill(data.accountId, data.mailbox).catch((error) => {
+        console.error('[worker:backfill] enqueue failed', {
+          accountId: data.accountId,
+          mailbox: data.mailbox,
+          error: error instanceof Error ? error.message : error,
+        });
+      });
       return result;
     },
     {
       connection: { url: redisUrl },
       concurrency: Number(process.env.SYNC_WORKER_CONCURRENCY ?? 4),
+      // History walks can outlive the default 30s lock; BullMQ renews while processing.
+      lockDuration: 120_000,
     },
   );
 
   worker.on('failed', (job, error) => {
-    console.error('[worker:sync] job failed', {
+    console.error(`[worker:${job?.name ?? 'sync'}] job failed`, {
       jobId: job?.id,
       accountId: job?.data.accountId,
       mailbox: job?.data.mailbox,
