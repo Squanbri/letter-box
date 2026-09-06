@@ -1,6 +1,7 @@
 import {
   Controller,
   Get,
+  Inject,
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { Public } from './auth/public.decorator';
@@ -21,8 +22,8 @@ interface ReadinessResponse extends HealthResponse {
 @Controller('health')
 export class HealthController {
   constructor(
-    private readonly database: PrismaDatabaseService,
-    private readonly syncQueue: SyncQueueService,
+    @Inject(PrismaDatabaseService) private readonly database: PrismaDatabaseService,
+    @Inject(SyncQueueService) private readonly syncQueue: SyncQueueService,
   ) {}
 
   @Get()

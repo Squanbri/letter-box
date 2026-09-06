@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import type { AccountStatus } from '@letter-box/contracts';
 import type { AccountConfig } from '../runtime';
 import type { AccountRow } from './account.types';
@@ -6,7 +6,9 @@ import { PrismaDatabaseService } from '../database/prisma-database.service';
 
 @Injectable()
 export class PrismaAccountRepository {
-  constructor(private readonly database: PrismaDatabaseService) {}
+  constructor(
+    @Inject(PrismaDatabaseService) private readonly database: PrismaDatabaseService,
+  ) {}
 
   async resetConnectionStatuses(now: string): Promise<void> {
     await this.database.client.account.updateMany({

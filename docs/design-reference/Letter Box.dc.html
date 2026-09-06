@@ -1,0 +1,953 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<meta name="design_doc_mode" content="canvas">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  body { margin: 0; background: #e7e6e2; }
+  a { color: #1f7a4d; }
+  a:hover { color: #17150f; }
+  @keyframes lbspin { to { transform: rotate(360deg); } }
+</style>
+</helmet>
+
+<section style="display:flex;flex-direction:column;gap:52px;padding:56px 56px 0;font-family:'IBM Plex Sans',system-ui,sans-serif">
+
+  <!-- ===================== 3A · ДАШБОРД (главный экран) ===================== -->
+  <div id="3a" style="display:flex;flex-direction:column;gap:20px;width:1440px">
+    <div style="display:flex;align-items:center;gap:14px">
+      <span style="font-family:'IBM Plex Mono',monospace;font-size:11px;font-weight:600;letter-spacing:.1em;color:#17150f;border:1px solid #17150f;padding:3px 8px">3A</span>
+      <strong style="flex:none;white-space:nowrap;font-size:20px;font-weight:600;letter-spacing:-0.01em;color:#17150f">Дашборд — главный экран</strong>
+      <span style="flex:1;min-width:0;font-size:14px;color:#6b6659">Матрица «тег × аккаунт» — единственное место, где видно и межаккаунтную, и поаккаунтную картину: клик по названию тега открывает секцию по всем аккаунтам, клик по ячейке — тот же тег в одном аккаунте.</span>
+    </div>
+
+    <div style="width:1440px;height:900px;display:grid;grid-template-columns:56px minmax(0,1fr);background:#fbfaf7;border:1px solid #d7d3c8;border-radius:11px;overflow:hidden;box-shadow:0 30px 70px -30px rgba(23,21,15,.45)">
+
+      <!-- rail -->
+      <div style="display:flex;flex-direction:column;align-items:center;padding:0 0 12px;background:#f1eee6;border-right:1px solid #e3dfd4">
+        <div style="display:flex;flex-direction:column;gap:6px;padding:14px 0 16px">
+          <span style="width:10px;height:10px;border-radius:50%;background:#d5d0c2"></span>
+          <span style="width:10px;height:10px;border-radius:50%;background:#d5d0c2"></span>
+          <span style="width:10px;height:10px;border-radius:50%;background:#d5d0c2"></span>
+        </div>
+        <div style="display:flex;flex-direction:column;align-items:center;gap:7px;flex:1">
+          <div style="position:relative;width:34px;height:34px;border-radius:10px;background:#17150f;display:flex;align-items:center;justify-content:center;font-family:'IBM Plex Mono',monospace;font-size:13px;color:#fffefb">⌂
+            <span style="position:absolute;left:-6px;top:9px;width:3px;height:16px;border-radius:2px;background:#17150f"></span>
+          </div>
+          <div style="width:34px;height:34px;border-radius:10px;background:#fffefb;border:1px solid #e0dbcd;display:flex;align-items:center;justify-content:center;font-family:'IBM Plex Mono',monospace;font-size:12px;color:#5c584d">∗</div>
+          <div style="width:18px;height:1px;background:#e0dbcd;margin:3px 0"></div>
+          <div style="width:34px;height:34px;border-radius:10px;background:#e4efe7;display:flex;align-items:center;justify-content:center;font-family:'IBM Plex Mono',monospace;font-size:11px;font-weight:600;color:#1f7a4d">₽</div>
+          <div style="width:34px;height:34px;border-radius:10px;background:#f6e8e1;display:flex;align-items:center;justify-content:center;font-family:'IBM Plex Mono',monospace;font-size:12px;color:#b3421c">!</div>
+          <div style="position:relative;width:34px;height:34px;border-radius:10px;background:#e8eef8;display:flex;align-items:center;justify-content:center;font-family:'IBM Plex Mono',monospace;font-size:12px;color:#1550b0">▤
+            <span style="position:absolute;top:-2px;right:-2px;min-width:15px;height:15px;border-radius:99px;background:#17150f;color:#fffefb;font-size:9px;font-weight:600;display:flex;align-items:center;justify-content:center;padding:0 3px">4</span>
+          </div>
+          <div style="width:34px;height:34px;border-radius:10px;background:#e7f1f4;display:flex;align-items:center;justify-content:center;font-family:'IBM Plex Mono',monospace;font-size:12px;color:#006d87">‹›</div>
+          <div style="width:34px;height:34px;border-radius:10px;background:#f6efdd;display:flex;align-items:center;justify-content:center;font-family:'IBM Plex Mono',monospace;font-size:12px;color:#a06a08">%</div>
+          <div style="width:34px;height:34px;border-radius:10px;border:1px dashed #dcd7c8;display:flex;align-items:center;justify-content:center;font-family:'IBM Plex Mono',monospace;font-size:13px;color:#a9a496">+</div>
+        </div>
+        <div style="display:flex;flex-direction:column;align-items:center;gap:9px">
+          <div style="display:flex;flex-direction:column;align-items:center;gap:5px">
+            <span style="width:7px;height:7px;border-radius:50%;background:#2774e6"></span>
+            <span style="width:7px;height:7px;border-radius:50%;background:#d63e83"></span>
+            <span style="width:7px;height:7px;border-radius:50%;background:#7c4ddb"></span>
+          </div>
+          <div style="width:18px;height:1px;background:#e0dbcd"></div>
+          <div style="width:30px;height:30px;border-radius:9px;background:#17150f;color:#fffefb;display:flex;align-items:center;justify-content:center;font-size:14px">✎</div>
+        </div>
+      </div>
+
+      <!-- dashboard body -->
+      <div style="display:flex;flex-direction:column;gap:20px;padding:26px 30px;overflow:hidden">
+
+        <div style="display:flex;align-items:flex-end;gap:16px">
+          <div style="display:flex;flex-direction:column;gap:4px">
+            <h1 style="margin:0;font-size:27px;font-weight:600;letter-spacing:-0.025em;color:#17150f">Суббота, 6 сентября</h1>
+            <span style="font-family:'IBM Plex Mono',monospace;font-size:10.5px;letter-spacing:.04em;color:#8d887a">3 аккаунта · синхронизировано 2 мин назад · Ollama разметила 178 из 214</span>
+          </div>
+          <span style="flex:1"></span>
+          <div style="display:flex;gap:10px">
+            <div style="display:flex;flex-direction:column;gap:2px;padding:10px 16px;background:#fffefb;border:1px solid #e6e1d4;border-radius:9px;min-width:104px">
+              <span style="font-family:'IBM Plex Mono',monospace;font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;color:#8d887a">Непрочитанных</span>
+              <strong style="font-size:24px;font-weight:600;letter-spacing:-0.02em;color:#17150f">24</strong>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:2px;padding:10px 16px;background:#fffefb;border:1px solid #e6e1d4;border-radius:9px;min-width:104px;box-shadow:inset 2px 0 0 #b3421c">
+              <span style="font-family:'IBM Plex Mono',monospace;font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;color:#8d887a">Важные</span>
+              <strong style="font-size:24px;font-weight:600;letter-spacing:-0.02em;color:#17150f">6</strong>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:2px;padding:10px 16px;background:#fffefb;border:1px solid #e6e1d4;border-radius:9px;min-width:104px">
+              <span style="font-family:'IBM Plex Mono',monospace;font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;color:#8d887a">Ждут ответа</span>
+              <strong style="font-size:24px;font-weight:600;letter-spacing:-0.02em;color:#17150f">3</strong>
+            </div>
+          </div>
+        </div>
+
+        <div style="display:grid;grid-template-columns:minmax(0,1.62fr) minmax(0,1fr);gap:20px;flex:1;min-height:0">
+
+          <!-- tag × account matrix -->
+          <div style="display:flex;flex-direction:column;background:#fffefb;border:1px solid #e6e1d4;border-radius:10px;overflow:hidden">
+            <div style="display:flex;align-items:center;gap:10px;padding:14px 18px 12px;border-bottom:1px solid #eae6da">
+              <strong style="flex:1;font-size:14px;font-weight:600;color:#17150f">Теги по аккаунтам</strong>
+              <span style="font-family:'IBM Plex Mono',monospace;font-size:9.5px;letter-spacing:.06em;text-transform:uppercase;color:#a9a496">строка — все аккаунты · ячейка — один</span>
+            </div>
+
+            <div style="display:grid;grid-template-columns:minmax(0,1fr) 76px 76px 76px 84px;align-items:center;padding:9px 18px;border-bottom:1px solid #f0ece0;background:#faf8f2">
+              <span style="font-family:'IBM Plex Mono',monospace;font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;color:#a9a496">Тег</span>
+              <span style="display:flex;align-items:center;justify-content:flex-end;gap:6px"><span style="width:6px;height:6px;border-radius:50%;background:#2774e6"></span><span style="font-family:'IBM Plex Mono',monospace;font-size:9.5px;color:#8d887a">mail.ru</span></span>
+              <span style="display:flex;align-items:center;justify-content:flex-end;gap:6px"><span style="width:6px;height:6px;border-radius:50%;background:#d63e83"></span><span style="font-family:'IBM Plex Mono',monospace;font-size:9.5px;color:#8d887a">яндекс</span></span>
+              <span style="display:flex;align-items:center;justify-content:flex-end;gap:6px"><span style="width:6px;height:6px;border-radius:50%;background:#7c4ddb"></span><span style="font-family:'IBM Plex Mono',monospace;font-size:9.5px;color:#8d887a">gmail</span></span>
+              <span style="text-align:right;font-family:'IBM Plex Mono',monospace;font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;color:#17150f">Всего</span>
+            </div>
+
+            <div style="display:grid;grid-template-columns:minmax(0,1fr) 76px 76px 76px 84px;align-items:center;padding:0 18px;height:44px;border-bottom:1px solid #f4f1e7">
+              <span style="display:flex;align-items:center;gap:9px"><span style="width:8px;height:8px;border-radius:3px;background:#b3421c"></span><strong style="font-size:13px;font-weight:600;color:#17150f">Важные</strong><span style="font-family:'IBM Plex Mono',monospace;font-size:9.5px;color:#b3421c;background:#f6e8e1;padding:1px 5px;border-radius:99px">4 непроч.</span></span>
+              <span style="text-align:right;font-family:'IBM Plex Mono',monospace;font-size:12.5px;color:#17150f;background:#f6e8e1;padding:4px 0;border-radius:5px">4</span>
+              <span style="text-align:right;font-family:'IBM Plex Mono',monospace;font-size:12.5px;color:#5c584d">2</span>
+              <span style="text-align:right;font-family:'IBM Plex Mono',monospace;font-size:12.5px;color:#c9c3b2">—</span>
+              <strong style="text-align:right;font-family:'IBM Plex Mono',monospace;font-size:13px;font-weight:600;color:#17150f">6</strong>
+            </div>
+            <div style="display:grid;grid-template-columns:minmax(0,1fr) 76px 76px 76px 84px;align-items:center;padding:0 18px;height:44px;border-bottom:1px solid #f4f1e7;background:#f7f5ee">
+              <span style="display:flex;align-items:center;gap:9px"><span style="width:8px;height:8px;border-radius:3px;background:#1f7a4d"></span><strong style="font-size:13px;font-weight:600;color:#17150f">Финансы</strong></span>
+              <span style="text-align:right;font-family:'IBM Plex Mono',monospace;font-size:12.5px;color:#17150f">18</span>
+              <span style="text-align:right;font-family:'IBM Plex Mono',monospace;font-size:12.5px;color:#5c584d">9</span>
+              <span style="text-align:right;font-family:'IBM Plex Mono',monospace;font-size:12.5px;color:#5c584d">4</span>
+              <strong style="text-align:right;font-family:'IBM Plex Mono',monospace;font-size:13px;font-weight:600;color:#17150f">31</strong>
+            </div>
+            <div style="display:grid;grid-template-columns:minmax(0,1fr) 76px 76px 76px 84px;align-items:center;padding:0 18px;height:44px;border-bottom:1px solid #f4f1e7">
+              <span style="display:flex;align-items:center;gap:9px"><span style="width:8px;height:8px;border-radius:3px;background:#1550b0"></span><strong style="font-size:13px;font-weight:600;color:#17150f">Работа</strong><span style="font-family:'IBM Plex Mono',monospace;font-size:9.5px;color:#1550b0;background:#e8eef8;padding:1px 5px;border-radius:99px">4 непроч.</span></span>
+              <span style="text-align:right;font-family:'IBM Plex Mono',monospace;font-size:12.5px;color:#5c584d">3</span>
+              <span style="text-align:right;font-family:'IBM Plex Mono',monospace;font-size:12.5px;color:#5c584d">1</span>
+              <span style="text-align:right;font-family:'IBM Plex Mono',monospace;font-size:12.5px;color:#17150f;background:#e8eef8;padding:4px 0;border-radius:5px">8</span>
+              <strong style="text-align:right;font-family:'IBM Plex Mono',monospace;font-size:13px;font-weight:600;color:#17150f">12</strong>
+            </div>
+            <div style="display:grid;grid-template-columns:minmax(0,1fr) 76px 76px 76px 84px;align-items:center;padding:0 18px;height:44px;border-bottom:1px solid #f4f1e7">
+              <span style="display:flex;align-items:center;gap:9px"><span style="width:8px;height:8px;border-radius:3px;background:#006d87"></span><strong style="font-size:13px;font-weight:600;color:#17150f">IT</strong></span>
+              <span style="text-align:right;font-family:'IBM Plex Mono',monospace;font-size:12.5px;color:#5c584d">3</span>
+              <span style="text-align:right;font-family:'IBM Plex Mono',monospace;font-size:12.5px;color:#5c584d">1</span>
+              <span style="text-align:right;font-family:'IBM Plex Mono',monospace;font-size:12.5px;color:#17150f">14</span>
+              <strong style="text-align:right;font-family:'IBM Plex Mono',monospace;font-size:13px;font-weight:600;color:#17150f">18</strong>
+            </div>
+            <div style="display:grid;grid-template-columns:minmax(0,1fr) 76px 76px 76px 84px;align-items:center;padding:0 18px;height:44px;border-bottom:1px solid #f4f1e7">
+              <span style="display:flex;align-items:center;gap:9px"><span style="width:8px;height:8px;border-radius:3px;background:#a06a08"></span><strong style="font-size:13px;font-weight:600;color:#17150f">Акции</strong></span>
+              <span style="text-align:right;font-family:'IBM Plex Mono',monospace;font-size:12.5px;color:#5c584d">12</span>
+              <span style="text-align:right;font-family:'IBM Plex Mono',monospace;font-size:12.5px;color:#17150f">21</span>
+              <span style="text-align:right;font-family:'IBM Plex Mono',monospace;font-size:12.5px;color:#5c584d">8</span>
+              <strong style="text-align:right;font-family:'IBM Plex Mono',monospace;font-size:13px;font-weight:600;color:#17150f">41</strong>
+            </div>
+            <div style="display:grid;grid-template-columns:minmax(0,1fr) 76px 76px 76px 84px;align-items:center;padding:0 18px;height:44px;border-bottom:1px solid #f4f1e7">
+              <span style="display:flex;align-items:center;gap:9px"><span style="width:8px;height:8px;border-radius:3px;background:#a02862"></span><strong style="font-size:13px;font-weight:600;color:#17150f">Личное</strong></span>
+              <span style="text-align:right;font-family:'IBM Plex Mono',monospace;font-size:12.5px;color:#5c584d">2</span>
+              <span style="text-align:right;font-family:'IBM Plex Mono',monospace;font-size:12.5px;color:#5c584d">4</span>
+              <span style="text-align:right;font-family:'IBM Plex Mono',monospace;font-size:12.5px;color:#5c584d">1</span>
+              <strong style="text-align:right;font-family:'IBM Plex Mono',monospace;font-size:13px;font-weight:600;color:#17150f">7</strong>
+            </div>
+            <div style="display:grid;grid-template-columns:minmax(0,1fr) 76px 76px 76px 84px;align-items:center;padding:0 18px;height:44px">
+              <span style="display:flex;align-items:center;gap:9px"><span style="width:8px;height:8px;border-radius:3px;background:#5a30b0"></span><span style="font-size:13px;color:#5c584d">Игры</span></span>
+              <span style="text-align:right;font-family:'IBM Plex Mono',monospace;font-size:12.5px;color:#c9c3b2">—</span>
+              <span style="text-align:right;font-family:'IBM Plex Mono',monospace;font-size:12.5px;color:#5c584d">6</span>
+              <span style="text-align:right;font-family:'IBM Plex Mono',monospace;font-size:12.5px;color:#5c584d">3</span>
+              <strong style="text-align:right;font-family:'IBM Plex Mono',monospace;font-size:13px;font-weight:600;color:#5c584d">9</strong>
+            </div>
+            <div style="flex:1"></div>
+            <div style="display:flex;align-items:center;gap:8px;padding:11px 18px;border-top:1px solid #eae6da;background:#faf8f2">
+              <span style="font-family:'IBM Plex Mono',monospace;font-size:9.5px;letter-spacing:.06em;color:#8d887a;flex:1">Спам и «Другое» скрыты · 37 и 12 писем</span>
+              <span style="font-family:'IBM Plex Mono',monospace;font-size:9.5px;letter-spacing:.06em;text-transform:uppercase;color:#5c584d;border:1px solid #e0dbcd;padding:3px 8px;border-radius:6px">Показать все</span>
+            </div>
+          </div>
+
+          <!-- right column -->
+          <div style="display:flex;flex-direction:column;gap:20px;min-height:0">
+
+            <div style="display:flex;flex-direction:column;gap:14px;padding:16px 18px;background:#fffefb;border:1px solid #e6e1d4;border-radius:10px">
+              <div style="display:flex;align-items:baseline;gap:10px">
+                <strong style="flex:1;font-size:14px;font-weight:600;color:#17150f">Поток за 14 дней</strong>
+                <span style="font-family:'IBM Plex Mono',monospace;font-size:9.5px;color:#a9a496">214 писем</span>
+              </div>
+              <div style="display:flex;align-items:flex-end;gap:5px;height:92px">
+                <div style="flex:1;display:flex;flex-direction:column;justify-content:flex-end;gap:2px;height:100%"><div style="height:18%;background:#2774e6;border-radius:2px 2px 0 0"></div><div style="height:9%;background:#d63e83"></div><div style="height:6%;background:#7c4ddb;border-radius:0 0 2px 2px"></div></div>
+                <div style="flex:1;display:flex;flex-direction:column;justify-content:flex-end;gap:2px;height:100%"><div style="height:26%;background:#2774e6;border-radius:2px 2px 0 0"></div><div style="height:11%;background:#d63e83"></div><div style="height:5%;background:#7c4ddb;border-radius:0 0 2px 2px"></div></div>
+                <div style="flex:1;display:flex;flex-direction:column;justify-content:flex-end;gap:2px;height:100%"><div style="height:14%;background:#2774e6;border-radius:2px 2px 0 0"></div><div style="height:20%;background:#d63e83"></div><div style="height:8%;background:#7c4ddb;border-radius:0 0 2px 2px"></div></div>
+                <div style="flex:1;display:flex;flex-direction:column;justify-content:flex-end;gap:2px;height:100%"><div style="height:9%;background:#2774e6;border-radius:2px 2px 0 0"></div><div style="height:7%;background:#d63e83"></div><div style="height:4%;background:#7c4ddb;border-radius:0 0 2px 2px"></div></div>
+                <div style="flex:1;display:flex;flex-direction:column;justify-content:flex-end;gap:2px;height:100%"><div style="height:31%;background:#2774e6;border-radius:2px 2px 0 0"></div><div style="height:14%;background:#d63e83"></div><div style="height:9%;background:#7c4ddb;border-radius:0 0 2px 2px"></div></div>
+                <div style="flex:1;display:flex;flex-direction:column;justify-content:flex-end;gap:2px;height:100%"><div style="height:22%;background:#2774e6;border-radius:2px 2px 0 0"></div><div style="height:26%;background:#d63e83"></div><div style="height:6%;background:#7c4ddb;border-radius:0 0 2px 2px"></div></div>
+                <div style="flex:1;display:flex;flex-direction:column;justify-content:flex-end;gap:2px;height:100%"><div style="height:12%;background:#2774e6;border-radius:2px 2px 0 0"></div><div style="height:9%;background:#d63e83"></div><div style="height:11%;background:#7c4ddb;border-radius:0 0 2px 2px"></div></div>
+                <div style="flex:1;display:flex;flex-direction:column;justify-content:flex-end;gap:2px;height:100%"><div style="height:35%;background:#2774e6;border-radius:2px 2px 0 0"></div><div style="height:12%;background:#d63e83"></div><div style="height:7%;background:#7c4ddb;border-radius:0 0 2px 2px"></div></div>
+                <div style="flex:1;display:flex;flex-direction:column;justify-content:flex-end;gap:2px;height:100%"><div style="height:19%;background:#2774e6;border-radius:2px 2px 0 0"></div><div style="height:16%;background:#d63e83"></div><div style="height:14%;background:#7c4ddb;border-radius:0 0 2px 2px"></div></div>
+                <div style="flex:1;display:flex;flex-direction:column;justify-content:flex-end;gap:2px;height:100%"><div style="height:11%;background:#2774e6;border-radius:2px 2px 0 0"></div><div style="height:6%;background:#d63e83"></div><div style="height:5%;background:#7c4ddb;border-radius:0 0 2px 2px"></div></div>
+                <div style="flex:1;display:flex;flex-direction:column;justify-content:flex-end;gap:2px;height:100%"><div style="height:28%;background:#2774e6;border-radius:2px 2px 0 0"></div><div style="height:18%;background:#d63e83"></div><div style="height:8%;background:#7c4ddb;border-radius:0 0 2px 2px"></div></div>
+                <div style="flex:1;display:flex;flex-direction:column;justify-content:flex-end;gap:2px;height:100%"><div style="height:41%;background:#2774e6;border-radius:2px 2px 0 0"></div><div style="height:15%;background:#d63e83"></div><div style="height:10%;background:#7c4ddb;border-radius:0 0 2px 2px"></div></div>
+                <div style="flex:1;display:flex;flex-direction:column;justify-content:flex-end;gap:2px;height:100%"><div style="height:24%;background:#2774e6;border-radius:2px 2px 0 0"></div><div style="height:22%;background:#d63e83"></div><div style="height:6%;background:#7c4ddb;border-radius:0 0 2px 2px"></div></div>
+                <div style="flex:1;display:flex;flex-direction:column;justify-content:flex-end;gap:2px;height:100%"><div style="height:33%;background:#2774e6;border-radius:2px 2px 0 0"></div><div style="height:12%;background:#d63e83"></div><div style="height:9%;background:#7c4ddb;border-radius:0 0 2px 2px"></div></div>
+              </div>
+              <div style="display:flex;align-items:center;gap:14px">
+                <span style="display:flex;align-items:center;gap:6px;font-family:'IBM Plex Mono',monospace;font-size:9.5px;color:#8d887a"><span style="width:6px;height:6px;border-radius:50%;background:#2774e6"></span>mail.ru</span>
+                <span style="display:flex;align-items:center;gap:6px;font-family:'IBM Plex Mono',monospace;font-size:9.5px;color:#8d887a"><span style="width:6px;height:6px;border-radius:50%;background:#d63e83"></span>яндекс</span>
+                <span style="display:flex;align-items:center;gap:6px;font-family:'IBM Plex Mono',monospace;font-size:9.5px;color:#8d887a"><span style="width:6px;height:6px;border-radius:50%;background:#7c4ddb"></span>gmail</span>
+                <span style="flex:1"></span>
+                <span style="font-family:'IBM Plex Mono',monospace;font-size:9.5px;color:#a9a496">24 авг — 6 сен</span>
+              </div>
+            </div>
+
+            <div style="display:flex;flex-direction:column;background:#fffefb;border:1px solid #e6e1d4;border-radius:10px;overflow:hidden">
+              <div style="display:flex;align-items:center;padding:14px 18px 11px;border-bottom:1px solid #eae6da">
+                <strong style="flex:1;font-size:14px;font-weight:600;color:#17150f">Аккаунты</strong>
+                <span style="font-family:'IBM Plex Mono',monospace;font-size:9.5px;letter-spacing:.06em;text-transform:uppercase;color:#5c584d;border:1px solid #e0dbcd;padding:3px 8px;border-radius:6px">Добавить</span>
+              </div>
+              <div style="display:flex;align-items:center;gap:10px;height:42px;padding:0 18px;border-bottom:1px solid #f4f1e7">
+                <span style="width:7px;height:7px;border-radius:50%;background:#2774e6;flex:none"></span>
+                <span style="flex:1;font-size:12.5px;color:#17150f;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">ivan@mail.ru</span>
+                <span style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:#1f7a4d">подключён</span>
+                <span style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:#a9a496;width:44px;text-align:right">14:22</span>
+              </div>
+              <div style="display:flex;align-items:center;gap:10px;height:42px;padding:0 18px;border-bottom:1px solid #f4f1e7">
+                <span style="width:7px;height:7px;border-radius:50%;background:#d63e83;flex:none"></span>
+                <span style="flex:1;font-size:12.5px;color:#17150f;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">i.petrov@yandex.ru</span>
+                <span style="display:flex;align-items:center;gap:6px;font-family:'IBM Plex Mono',monospace;font-size:10px;color:#8d887a"><span style="display:block;width:9px;height:9px;border:1.5px solid #e2ded2;border-top-color:#8d887a;border-radius:50%;animation:lbspin 1s linear infinite"></span>синхр.</span>
+                <span style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:#a9a496;width:44px;text-align:right">сейчас</span>
+              </div>
+              <div style="display:flex;align-items:center;gap:10px;height:42px;padding:0 18px">
+                <span style="width:7px;height:7px;border-radius:50%;background:#7c4ddb;flex:none"></span>
+                <span style="flex:1;font-size:12.5px;color:#17150f;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">squanbri@gmail.com</span>
+                <span style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:#b3421c">нужен пароль</span>
+                <span style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:#a9a496;width:44px;text-align:right">4 сен</span>
+              </div>
+            </div>
+
+            <div style="flex:1;display:flex;flex-direction:column;background:#fffefb;border:1px solid #e6e1d4;border-radius:10px;overflow:hidden;min-height:0">
+              <div style="display:flex;align-items:center;gap:10px;padding:14px 18px 11px;border-bottom:1px solid #eae6da">
+                <strong style="flex:1;font-size:14px;font-weight:600;color:#17150f">Ждут ответа</strong>
+                <span style="font-family:'IBM Plex Mono',monospace;font-size:9.5px;color:#a9a496">вы читали, но не ответили</span>
+              </div>
+              <div style="display:flex;align-items:center;gap:9px;height:34px;padding:0 18px;border-bottom:1px solid #f4f1e7">
+                <span style="width:6px;height:6px;border-radius:50%;background:#7c4ddb;flex:none"></span>
+                <span style="width:80px;font-size:12.5px;font-weight:600;color:#17150f;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Анна К.</span>
+                <span style="flex:1;min-width:0;font-size:12.5px;color:#5c584d;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Очередь задач — жду решение</span>
+                <span style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:#a9a496">2 дня</span>
+              </div>
+              <div style="display:flex;align-items:center;gap:9px;height:34px;padding:0 18px;border-bottom:1px solid #f4f1e7">
+                <span style="width:6px;height:6px;border-radius:50%;background:#d63e83;flex:none"></span>
+                <span style="width:80px;font-size:12.5px;font-weight:600;color:#17150f;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Дмитрий</span>
+                <span style="flex:1;min-width:0;font-size:12.5px;color:#5c584d;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Договор на подпись</span>
+                <span style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:#a9a496">4 дня</span>
+              </div>
+              <div style="display:flex;align-items:center;gap:9px;height:34px;padding:0 18px">
+                <span style="width:6px;height:6px;border-radius:50%;background:#2774e6;flex:none"></span>
+                <span style="width:80px;font-size:12.5px;font-weight:600;color:#17150f;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">ЖКХ Москва</span>
+                <span style="flex:1;min-width:0;font-size:12.5px;color:#5c584d;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Показания счётчика до 25 числа</span>
+                <span style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:#a9a496">6 дней</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section style="display:flex;flex-direction:column;gap:52px;padding:0 56px;font-family:'IBM Plex Sans',system-ui,sans-serif">
+
+  <!-- ===================== 3B · СПИСОК БЕЗ ОТКРЫТОГО ПИСЬМА ===================== -->
+  <div id="3b" style="display:flex;flex-direction:column;gap:20px;width:1440px">
+    <div style="display:flex;align-items:center;gap:14px">
+      <span style="font-family:'IBM Plex Mono',monospace;font-size:11px;font-weight:600;letter-spacing:.1em;color:#17150f;border:1px solid #17150f;padding:3px 8px">3B</span>
+      <strong style="flex:none;white-space:nowrap;font-size:20px;font-weight:600;letter-spacing:-0.01em;color:#17150f">Секция тега без открытого письма</strong>
+      <span style="flex:1;min-width:0;font-size:14px;color:#6b6659">Ничего не выбрано — список разворачивается на всю ширину и добавляет колонки «аккаунт» и «теги». Сверху переключатель охвата: вся секция по трём аккаунтам или один аккаунт.</span>
+    </div>
+
+    <div style="width:1440px;height:760px;display:grid;grid-template-columns:56px minmax(0,1fr);background:#fbfaf7;border:1px solid #d7d3c8;border-radius:11px;overflow:hidden;box-shadow:0 30px 70px -30px rgba(23,21,15,.45)">
+
+      <div style="display:flex;flex-direction:column;align-items:center;padding:0 0 12px;background:#f1eee6;border-right:1px solid #e3dfd4">
+        <div style="display:flex;flex-direction:column;gap:6px;padding:14px 0 16px">
+          <span style="width:10px;height:10px;border-radius:50%;background:#d5d0c2"></span>
+          <span style="width:10px;height:10px;border-radius:50%;background:#d5d0c2"></span>
+          <span style="width:10px;height:10px;border-radius:50%;background:#d5d0c2"></span>
+        </div>
+        <div style="display:flex;flex-direction:column;align-items:center;gap:7px;flex:1">
+          <div style="width:34px;height:34px;border-radius:10px;background:#fffefb;border:1px solid #e0dbcd;display:flex;align-items:center;justify-content:center;font-family:'IBM Plex Mono',monospace;font-size:13px;color:#5c584d">⌂</div>
+          <div style="width:34px;height:34px;border-radius:10px;background:#fffefb;border:1px solid #e0dbcd;display:flex;align-items:center;justify-content:center;font-family:'IBM Plex Mono',monospace;font-size:12px;color:#5c584d">∗</div>
+          <div style="width:18px;height:1px;background:#e0dbcd;margin:3px 0"></div>
+          <div style="position:relative;width:34px;height:34px;border-radius:10px;background:#e4efe7;box-shadow:inset 0 0 0 1.5px #1f7a4d;display:flex;align-items:center;justify-content:center;font-family:'IBM Plex Mono',monospace;font-size:11px;font-weight:600;color:#1f7a4d">₽
+            <span style="position:absolute;left:-6px;top:9px;width:3px;height:16px;border-radius:2px;background:#1f7a4d"></span>
+          </div>
+          <div style="width:34px;height:34px;border-radius:10px;background:#f6e8e1;display:flex;align-items:center;justify-content:center;font-family:'IBM Plex Mono',monospace;font-size:12px;color:#b3421c">!</div>
+          <div style="width:34px;height:34px;border-radius:10px;background:#e8eef8;display:flex;align-items:center;justify-content:center;font-family:'IBM Plex Mono',monospace;font-size:12px;color:#1550b0">▤</div>
+          <div style="width:34px;height:34px;border-radius:10px;background:#e7f1f4;display:flex;align-items:center;justify-content:center;font-family:'IBM Plex Mono',monospace;font-size:12px;color:#006d87">‹›</div>
+          <div style="width:34px;height:34px;border-radius:10px;background:#f6efdd;display:flex;align-items:center;justify-content:center;font-family:'IBM Plex Mono',monospace;font-size:12px;color:#a06a08">%</div>
+        </div>
+        <div style="display:flex;flex-direction:column;align-items:center;gap:9px">
+          <div style="display:flex;flex-direction:column;align-items:center;gap:5px">
+            <span style="width:7px;height:7px;border-radius:50%;background:#2774e6"></span>
+            <span style="width:7px;height:7px;border-radius:50%;background:#d63e83"></span>
+            <span style="width:7px;height:7px;border-radius:50%;background:#7c4ddb"></span>
+          </div>
+          <div style="width:18px;height:1px;background:#e0dbcd"></div>
+          <div style="width:30px;height:30px;border-radius:9px;background:#17150f;color:#fffefb;display:flex;align-items:center;justify-content:center;font-size:14px">✎</div>
+        </div>
+      </div>
+
+      <div style="display:flex;flex-direction:column;background:#fffefb;overflow:hidden">
+
+        <div style="display:flex;flex-direction:column;gap:12px;padding:22px 30px 14px;border-bottom:1px solid #eae6da">
+          <div style="display:flex;align-items:center;gap:11px">
+            <span style="width:10px;height:10px;border-radius:3px;background:#1f7a4d"></span>
+            <h1 style="margin:0;font-size:22px;font-weight:600;letter-spacing:-0.02em;color:#17150f">Финансы</h1>
+            <span style="font-family:'IBM Plex Mono',monospace;font-size:10.5px;color:#8d887a">31 письмо · 4 непрочитанных · 3 аккаунта</span>
+            <span style="flex:1"></span>
+            <span style="font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:#5c584d;border:1px solid #e0dbcd;padding:5px 10px;border-radius:7px">Прочитать все</span>
+            <span style="font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:#5c584d;border:1px solid #e0dbcd;padding:5px 10px;border-radius:7px">Дата ↓</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:6px">
+            <span style="font-family:'IBM Plex Mono',monospace;font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;color:#a9a496;padding-right:4px">Охват</span>
+            <span style="display:flex;align-items:center;gap:7px;font-family:'IBM Plex Mono',monospace;font-size:10.5px;color:#fffefb;background:#17150f;padding:5px 11px;border-radius:99px">Все аккаунты <span style="color:#a9a496">31</span></span>
+            <span style="display:flex;align-items:center;gap:7px;font-family:'IBM Plex Mono',monospace;font-size:10.5px;color:#5c584d;background:#f2efe6;padding:5px 11px;border-radius:99px"><span style="width:6px;height:6px;border-radius:50%;background:#2774e6"></span>ivan@mail.ru <span style="color:#a9a496">18</span></span>
+            <span style="display:flex;align-items:center;gap:7px;font-family:'IBM Plex Mono',monospace;font-size:10.5px;color:#5c584d;background:#f2efe6;padding:5px 11px;border-radius:99px"><span style="width:6px;height:6px;border-radius:50%;background:#d63e83"></span>i.petrov@yandex.ru <span style="color:#a9a496">9</span></span>
+            <span style="display:flex;align-items:center;gap:7px;font-family:'IBM Plex Mono',monospace;font-size:10.5px;color:#5c584d;background:#f2efe6;padding:5px 11px;border-radius:99px"><span style="width:6px;height:6px;border-radius:50%;background:#7c4ddb"></span>squanbri@gmail.com <span style="color:#a9a496">4</span></span>
+            <span style="flex:1"></span>
+            <span style="font-family:'IBM Plex Mono',monospace;font-size:9.5px;color:#a9a496">⌥← → между аккаунтами</span>
+          </div>
+        </div>
+
+        <div style="display:grid;grid-template-columns:20px 180px minmax(0,1fr) 250px 150px 62px;align-items:center;gap:12px;padding:9px 30px;background:#faf8f2;border-bottom:1px solid #eae6da">
+          <span></span>
+          <span style="font-family:'IBM Plex Mono',monospace;font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;color:#a9a496">Отправитель</span>
+          <span style="font-family:'IBM Plex Mono',monospace;font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;color:#a9a496">Тема</span>
+          <span style="font-family:'IBM Plex Mono',monospace;font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;color:#a9a496">AI-теги</span>
+          <span style="font-family:'IBM Plex Mono',monospace;font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;color:#a9a496">Аккаунт</span>
+          <span style="text-align:right;font-family:'IBM Plex Mono',monospace;font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;color:#a9a496">Дата</span>
+        </div>
+
+        <div style="display:flex;align-items:center;gap:8px;padding:8px 30px 6px">
+          <span style="font-family:'IBM Plex Mono',monospace;font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:#a9a496">Сегодня</span>
+          <span style="flex:1;height:1px;background:#f0ece0"></span>
+        </div>
+
+        <div style="display:grid;grid-template-columns:20px 180px minmax(0,1fr) 250px 150px 62px;align-items:center;gap:12px;padding:0 30px;height:34px;background:#f7f5ee">
+          <span style="width:6px;height:6px;border-radius:50%;background:#1f7a4d"></span>
+          <strong style="font-size:12.5px;font-weight:700;color:#17150f;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Т-Банк</strong>
+          <span style="min-width:0;font-size:12.5px;font-weight:600;color:#17150f;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Код подтверждения 4821 <span style="font-weight:400;color:#a9a496">— никому не сообщайте код…</span></span>
+          <span style="display:flex;gap:5px;overflow:hidden"><span style="font-family:'IBM Plex Mono',monospace;font-size:9px;letter-spacing:.08em;text-transform:uppercase;color:#b3421c;background:#f6e8e1;padding:2px 6px;border-radius:99px">Важные</span><span style="font-family:'IBM Plex Mono',monospace;font-size:9px;letter-spacing:.08em;text-transform:uppercase;color:#1f7a4d;background:#e4efe7;padding:2px 6px;border-radius:99px">Финансы</span></span>
+          <span style="display:flex;align-items:center;gap:7px;min-width:0"><span style="width:6px;height:6px;border-radius:50%;background:#2774e6;flex:none"></span><span style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:#8d887a;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">ivan@mail.ru</span></span>
+          <span style="text-align:right;font-family:'IBM Plex Mono',monospace;font-size:10px;color:#6b6659">14:22</span>
+        </div>
+
+        <div style="display:grid;grid-template-columns:20px 180px minmax(0,1fr) 250px 150px 62px;align-items:center;gap:12px;padding:0 30px;height:34px;border-top:1px solid #f4f1e7">
+          <span style="width:6px;height:6px;border-radius:50%;background:#1f7a4d"></span>
+          <strong style="font-size:12.5px;font-weight:700;color:#17150f;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Сбербанк</strong>
+          <span style="min-width:0;font-size:12.5px;font-weight:600;color:#17150f;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Выписка за август <span style="font-weight:400;color:#a9a496">— PDF, 240 КБ…</span></span>
+          <span style="display:flex;gap:5px;overflow:hidden"><span style="font-family:'IBM Plex Mono',monospace;font-size:9px;letter-spacing:.08em;text-transform:uppercase;color:#1f7a4d;background:#e4efe7;padding:2px 6px;border-radius:99px">Финансы</span></span>
+          <span style="display:flex;align-items:center;gap:7px;min-width:0"><span style="width:6px;height:6px;border-radius:50%;background:#d63e83;flex:none"></span><span style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:#8d887a;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">i.petrov@yandex.ru</span></span>
+          <span style="text-align:right;font-family:'IBM Plex Mono',monospace;font-size:10px;color:#6b6659">12:08</span>
+        </div>
+
+        <div style="display:grid;grid-template-columns:20px 180px minmax(0,1fr) 250px 150px 62px;align-items:center;gap:12px;padding:0 30px;height:34px;border-top:1px solid #f4f1e7">
+          <span></span>
+          <span style="font-size:12.5px;color:#5c584d;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Stripe</span>
+          <span style="min-width:0;font-size:12.5px;color:#5c584d;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Your invoice is available <span style="color:#a9a496">— $12.00 · letter-box…</span></span>
+          <span style="display:flex;gap:5px;overflow:hidden"><span style="font-family:'IBM Plex Mono',monospace;font-size:9px;letter-spacing:.08em;text-transform:uppercase;color:#1f7a4d;background:#e4efe7;padding:2px 6px;border-radius:99px">Финансы</span><span style="font-family:'IBM Plex Mono',monospace;font-size:9px;letter-spacing:.08em;text-transform:uppercase;color:#006d87;background:#e7f1f4;padding:2px 6px;border-radius:99px">IT</span></span>
+          <span style="display:flex;align-items:center;gap:7px;min-width:0"><span style="width:6px;height:6px;border-radius:50%;background:#7c4ddb;flex:none"></span><span style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:#8d887a;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">squanbri@gmail.com</span></span>
+          <span style="text-align:right;font-family:'IBM Plex Mono',monospace;font-size:10px;color:#a9a496">10:41</span>
+        </div>
+
+        <div style="display:grid;grid-template-columns:20px 180px minmax(0,1fr) 250px 150px 62px;align-items:center;gap:12px;padding:0 30px;height:34px;border-top:1px solid #f4f1e7">
+          <span></span>
+          <span style="font-size:12.5px;color:#5c584d;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Т-Инвестиции</span>
+          <span style="min-width:0;font-size:12.5px;color:#5c584d;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Отчёт за август <span style="color:#a9a496">— портфель, дивиденды, налоги…</span></span>
+          <span style="display:flex;gap:5px;overflow:hidden"><span style="font-family:'IBM Plex Mono',monospace;font-size:9px;letter-spacing:.08em;text-transform:uppercase;color:#1f7a4d;background:#e4efe7;padding:2px 6px;border-radius:99px">Финансы</span></span>
+          <span style="display:flex;align-items:center;gap:7px;min-width:0"><span style="width:6px;height:6px;border-radius:50%;background:#2774e6;flex:none"></span><span style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:#8d887a;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">ivan@mail.ru</span></span>
+          <span style="text-align:right;font-family:'IBM Plex Mono',monospace;font-size:10px;color:#a9a496">09:15</span>
+        </div>
+
+        <div style="display:flex;align-items:center;gap:8px;padding:12px 30px 6px">
+          <span style="font-family:'IBM Plex Mono',monospace;font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:#a9a496">Вчера</span>
+          <span style="flex:1;height:1px;background:#f0ece0"></span>
+        </div>
+
+        <div style="display:grid;grid-template-columns:20px 180px minmax(0,1fr) 250px 150px 62px;align-items:center;gap:12px;padding:0 30px;height:34px">
+          <span style="width:6px;height:6px;border-radius:50%;background:#1f7a4d"></span>
+          <strong style="font-size:12.5px;font-weight:700;color:#17150f;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">ЖКХ Москва</strong>
+          <span style="min-width:0;font-size:12.5px;font-weight:600;color:#17150f;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Начисления за август <span style="font-weight:400;color:#a9a496">— 4 812,40 ₽ к оплате…</span></span>
+          <span style="display:flex;gap:5px;overflow:hidden"><span style="font-family:'IBM Plex Mono',monospace;font-size:9px;letter-spacing:.08em;text-transform:uppercase;color:#1f7a4d;background:#e4efe7;padding:2px 6px;border-radius:99px">Финансы</span><span style="font-family:'IBM Plex Mono',monospace;font-size:9px;letter-spacing:.08em;text-transform:uppercase;color:#b3421c;background:#f6e8e1;padding:2px 6px;border-radius:99px">Важные</span></span>
+          <span style="display:flex;align-items:center;gap:7px;min-width:0"><span style="width:6px;height:6px;border-radius:50%;background:#d63e83;flex:none"></span><span style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:#8d887a;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">i.petrov@yandex.ru</span></span>
+          <span style="text-align:right;font-family:'IBM Plex Mono',monospace;font-size:10px;color:#6b6659">19:44</span>
+        </div>
+
+        <div style="display:grid;grid-template-columns:20px 180px minmax(0,1fr) 250px 150px 62px;align-items:center;gap:12px;padding:0 30px;height:34px;border-top:1px solid #f4f1e7">
+          <span></span>
+          <span style="font-size:12.5px;color:#5c584d;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Т-Банк</span>
+          <span style="min-width:0;font-size:12.5px;color:#5c584d;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Кэшбэк за август <span style="color:#a9a496">— 1 204 ₽ зачислены…</span></span>
+          <span style="display:flex;gap:5px;overflow:hidden"><span style="font-family:'IBM Plex Mono',monospace;font-size:9px;letter-spacing:.08em;text-transform:uppercase;color:#1f7a4d;background:#e4efe7;padding:2px 6px;border-radius:99px">Финансы</span></span>
+          <span style="display:flex;align-items:center;gap:7px;min-width:0"><span style="width:6px;height:6px;border-radius:50%;background:#2774e6;flex:none"></span><span style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:#8d887a;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">ivan@mail.ru</span></span>
+          <span style="text-align:right;font-family:'IBM Plex Mono',monospace;font-size:10px;color:#a9a496">18:20</span>
+        </div>
+
+        <div style="display:grid;grid-template-columns:20px 180px minmax(0,1fr) 250px 150px 62px;align-items:center;gap:12px;padding:0 30px;height:34px;border-top:1px solid #f4f1e7">
+          <span></span>
+          <span style="font-size:12.5px;color:#5c584d;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">GitHub</span>
+          <span style="min-width:0;font-size:12.5px;color:#5c584d;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Payment receipt · Copilot <span style="color:#a9a496">— $10.00…</span></span>
+          <span style="display:flex;gap:5px;overflow:hidden"><span style="font-family:'IBM Plex Mono',monospace;font-size:9px;letter-spacing:.08em;text-transform:uppercase;color:#1f7a4d;background:#e4efe7;padding:2px 6px;border-radius:99px">Финансы</span><span style="font-family:'IBM Plex Mono',monospace;font-size:9px;letter-spacing:.08em;text-transform:uppercase;color:#006d87;background:#e7f1f4;padding:2px 6px;border-radius:99px">IT</span></span>
+          <span style="display:flex;align-items:center;gap:7px;min-width:0"><span style="width:6px;height:6px;border-radius:50%;background:#7c4ddb;flex:none"></span><span style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:#8d887a;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">squanbri@gmail.com</span></span>
+          <span style="text-align:right;font-family:'IBM Plex Mono',monospace;font-size:10px;color:#a9a496">11:02</span>
+        </div>
+
+        <div style="display:grid;grid-template-columns:20px 180px minmax(0,1fr) 250px 150px 62px;align-items:center;gap:12px;padding:0 30px;height:34px;border-top:1px solid #f4f1e7">
+          <span></span>
+          <span style="font-size:12.5px;color:#5c584d;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Мосэнерго</span>
+          <span style="min-width:0;font-size:12.5px;color:#5c584d;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Показания счётчика <span style="color:#a9a496">— передайте до 25 числа…</span></span>
+          <span style="display:flex;gap:5px;overflow:hidden"><span style="font-family:'IBM Plex Mono',monospace;font-size:9px;letter-spacing:.08em;text-transform:uppercase;color:#1f7a4d;background:#e4efe7;padding:2px 6px;border-radius:99px">Финансы</span></span>
+          <span style="display:flex;align-items:center;gap:7px;min-width:0"><span style="width:6px;height:6px;border-radius:50%;background:#d63e83;flex:none"></span><span style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:#8d887a;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">i.petrov@yandex.ru</span></span>
+          <span style="text-align:right;font-family:'IBM Plex Mono',monospace;font-size:10px;color:#a9a496">09:30</span>
+        </div>
+
+        <div style="flex:1"></div>
+        <div style="display:flex;align-items:center;gap:16px;padding:11px 30px;border-top:1px solid #eae6da;background:#faf8f2">
+          <span style="font-family:'IBM Plex Mono',monospace;font-size:9.5px;letter-spacing:.06em;color:#8d887a">↑ ↓ выбрать</span>
+          <span style="font-family:'IBM Plex Mono',monospace;font-size:9.5px;letter-spacing:.06em;color:#8d887a">⏎ открыть — список сжимается до 340px</span>
+          <span style="font-family:'IBM Plex Mono',monospace;font-size:9.5px;letter-spacing:.06em;color:#8d887a">⌥K сменить тег</span>
+          <span style="flex:1"></span>
+          <span style="font-family:'IBM Plex Mono',monospace;font-size:9.5px;color:#a9a496">показано 8 из 31</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================== 3C · НАВИГАЦИЯ ===================== -->
+  <div id="3c" style="display:flex;flex-direction:column;gap:20px;width:1440px">
+    <div style="display:flex;align-items:center;gap:14px">
+      <span style="font-family:'IBM Plex Mono',monospace;font-size:11px;font-weight:600;letter-spacing:.1em;color:#17150f;border:1px solid #17150f;padding:3px 8px">3C</span>
+      <strong style="font-size:20px;font-weight:600;letter-spacing:-0.01em;color:#17150f">Навигация: экраны, межаккаунтные и поаккаунтные секции</strong>
+    </div>
+
+    <div style="display:flex;gap:24px;flex-wrap:wrap;align-items:flex-start;width:1440px">
+
+      <!-- rail map -->
+      <div style="display:flex;gap:20px;padding:22px;background:#fbfaf7;border:1px solid #d7d3c8;border-radius:11px;width:640px">
+        <div style="display:flex;flex-direction:column;align-items:center;width:56px;flex:none;padding:10px 0;background:#f1eee6;border:1px solid #e3dfd4;border-radius:10px">
+          <div style="display:flex;flex-direction:column;align-items:center;gap:7px">
+            <div style="width:34px;height:34px;border-radius:10px;background:#17150f;display:flex;align-items:center;justify-content:center;font-family:'IBM Plex Mono',monospace;font-size:13px;color:#fffefb">⌂</div>
+            <div style="width:34px;height:34px;border-radius:10px;background:#fffefb;border:1px solid #e0dbcd;display:flex;align-items:center;justify-content:center;font-family:'IBM Plex Mono',monospace;font-size:12px;color:#5c584d">∗</div>
+            <div style="width:18px;height:1px;background:#e0dbcd;margin:3px 0"></div>
+            <div style="width:34px;height:34px;border-radius:10px;background:#e4efe7;display:flex;align-items:center;justify-content:center;font-family:'IBM Plex Mono',monospace;font-size:11px;font-weight:600;color:#1f7a4d">₽</div>
+            <div style="width:34px;height:34px;border-radius:10px;background:#f6e8e1;display:flex;align-items:center;justify-content:center;font-family:'IBM Plex Mono',monospace;font-size:12px;color:#b3421c">!</div>
+            <div style="width:34px;height:34px;border-radius:10px;background:#e8eef8;display:flex;align-items:center;justify-content:center;font-family:'IBM Plex Mono',monospace;font-size:12px;color:#1550b0">▤</div>
+            <div style="width:34px;height:34px;border-radius:10px;border:1px dashed #dcd7c8;display:flex;align-items:center;justify-content:center;font-family:'IBM Plex Mono',monospace;font-size:13px;color:#a9a496">+</div>
+            <div style="width:18px;height:1px;background:#e0dbcd;margin:3px 0"></div>
+            <div style="display:flex;flex-direction:column;align-items:center;gap:5px">
+              <span style="width:7px;height:7px;border-radius:50%;background:#2774e6"></span>
+              <span style="width:7px;height:7px;border-radius:50%;background:#d63e83"></span>
+              <span style="width:7px;height:7px;border-radius:50%;background:#7c4ddb"></span>
+            </div>
+          </div>
+        </div>
+
+        <div style="flex:1;display:flex;flex-direction:column;gap:14px;min-width:0">
+          <div style="display:flex;flex-direction:column;gap:3px">
+            <span style="font-family:'IBM Plex Mono',monospace;font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;color:#a9a496">1 · Экраны · ⌥1 ⌥2</span>
+            <span style="font-size:13px;color:#2c2920;text-wrap:pretty"><strong style="font-weight:600">Дашборд</strong> — главная, открывается при запуске. <strong style="font-weight:600">Все письма</strong> — единый поток трёх аккаунтов без фильтра по тегу.</span>
+          </div>
+          <div style="height:1px;background:#f0ece0"></div>
+          <div style="display:flex;flex-direction:column;gap:3px">
+            <span style="font-family:'IBM Plex Mono',monospace;font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;color:#a9a496">2 · Межаккаунтные секции тегов · ⌥3…⌥9</span>
+            <span style="font-size:13px;color:#2c2920;text-wrap:pretty">Плитка = тег по <strong style="font-weight:600">всем</strong> аккаунтам. Порядок и состав настраиваются, «+» добавляет тег в рейл. Активная секция помечена вертикальной риской слева.</span>
+          </div>
+          <div style="height:1px;background:#f0ece0"></div>
+          <div style="display:flex;flex-direction:column;gap:3px">
+            <span style="font-family:'IBM Plex Mono',monospace;font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;color:#a9a496">3 · Аккаунты · ⌥← →</span>
+            <span style="font-size:13px;color:#2c2920;text-wrap:pretty">Точка = аккаунт. Клик сужает <strong style="font-weight:600">текущую</strong> секцию до одного аккаунта — тот же тег, поаккаунтный охват; плитки тега получают точку-метку аккаунта.</span>
+          </div>
+          <div style="height:1px;background:#f0ece0"></div>
+          <div style="display:flex;flex-direction:column;gap:3px">
+            <span style="font-family:'IBM Plex Mono',monospace;font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;color:#a9a496">4 · ⌥K</span>
+            <span style="font-size:13px;color:#2c2920;text-wrap:pretty">Палитра всех 10 тегов со счётчиками по каждому аккаунту — для тегов, которых нет в рейле.</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- per-account scoped state -->
+      <div style="display:flex;flex-direction:column;gap:11px;width:700px">
+        <span style="font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:#6b6659">Та же секция, поаккаунтный охват</span>
+        <div style="display:grid;grid-template-columns:56px minmax(0,1fr);background:#fbfaf7;border:1px solid #d7d3c8;border-radius:11px;overflow:hidden">
+          <div style="display:flex;flex-direction:column;align-items:center;gap:7px;padding:12px 0;background:#f1eee6;border-right:1px solid #e3dfd4">
+            <div style="width:34px;height:34px;border-radius:10px;background:#fffefb;border:1px solid #e0dbcd;display:flex;align-items:center;justify-content:center;font-family:'IBM Plex Mono',monospace;font-size:13px;color:#5c584d">⌂</div>
+            <div style="width:18px;height:1px;background:#e0dbcd;margin:1px 0"></div>
+            <div style="position:relative;width:34px;height:34px;border-radius:10px;background:#e4efe7;box-shadow:inset 0 0 0 1.5px #1f7a4d;display:flex;align-items:center;justify-content:center;font-family:'IBM Plex Mono',monospace;font-size:11px;font-weight:600;color:#1f7a4d">₽
+              <span style="position:absolute;left:-6px;top:9px;width:3px;height:16px;border-radius:2px;background:#1f7a4d"></span>
+              <span style="position:absolute;bottom:-2px;right:-2px;width:10px;height:10px;border-radius:50%;background:#2774e6;box-shadow:0 0 0 2px #f1eee6"></span>
+            </div>
+            <div style="position:relative;width:34px;height:34px;border-radius:10px;background:#f6e8e1;display:flex;align-items:center;justify-content:center;font-family:'IBM Plex Mono',monospace;font-size:12px;color:#b3421c">!
+              <span style="position:absolute;bottom:-2px;right:-2px;width:10px;height:10px;border-radius:50%;background:#2774e6;box-shadow:0 0 0 2px #f1eee6"></span>
+            </div>
+            <div style="position:relative;width:34px;height:34px;border-radius:10px;background:#e8eef8;display:flex;align-items:center;justify-content:center;font-family:'IBM Plex Mono',monospace;font-size:12px;color:#1550b0">▤
+              <span style="position:absolute;bottom:-2px;right:-2px;width:10px;height:10px;border-radius:50%;background:#2774e6;box-shadow:0 0 0 2px #f1eee6"></span>
+            </div>
+            <div style="flex:1"></div>
+            <div style="width:11px;height:11px;border-radius:50%;background:#2774e6;box-shadow:0 0 0 2px #fffefb,0 0 0 3.5px #2774e6"></div>
+            <span style="width:7px;height:7px;border-radius:50%;background:#d63e83"></span>
+            <span style="width:7px;height:7px;border-radius:50%;background:#7c4ddb"></span>
+          </div>
+          <div style="display:flex;flex-direction:column;background:#fffefb">
+            <div style="display:flex;flex-direction:column;gap:10px;padding:16px 18px 13px;border-bottom:1px solid #eae6da">
+              <div style="display:flex;align-items:center;gap:10px">
+                <span style="width:9px;height:9px;border-radius:3px;background:#1f7a4d"></span>
+                <strong style="font-size:15px;font-weight:600;color:#17150f">Финансы</strong>
+                <span style="display:flex;align-items:center;gap:6px;font-family:'IBM Plex Mono',monospace;font-size:10.5px;color:#5c584d;background:#f2efe6;padding:3px 8px;border-radius:99px"><span style="width:6px;height:6px;border-radius:50%;background:#2774e6"></span>ivan@mail.ru</span>
+                <span style="flex:1"></span>
+                <span style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:#8d887a">18 · 2 непроч.</span>
+              </div>
+              <div style="display:flex;align-items:center;gap:6px">
+                <span style="font-family:'IBM Plex Mono',monospace;font-size:10.5px;color:#5c584d;background:#f2efe6;padding:5px 11px;border-radius:99px">Все аккаунты <span style="color:#a9a496">31</span></span>
+                <span style="display:flex;align-items:center;gap:7px;font-family:'IBM Plex Mono',monospace;font-size:10.5px;color:#fffefb;background:#17150f;padding:5px 11px;border-radius:99px"><span style="width:6px;height:6px;border-radius:50%;background:#2774e6"></span>ivan@mail.ru <span style="color:#a9a496">18</span></span>
+                <span style="display:flex;align-items:center;gap:7px;font-family:'IBM Plex Mono',monospace;font-size:10.5px;color:#5c584d;background:#f2efe6;padding:5px 11px;border-radius:99px"><span style="width:6px;height:6px;border-radius:50%;background:#d63e83"></span>яндекс <span style="color:#a9a496">9</span></span>
+                <span style="display:flex;align-items:center;gap:7px;font-family:'IBM Plex Mono',monospace;font-size:10.5px;color:#5c584d;background:#f2efe6;padding:5px 11px;border-radius:99px"><span style="width:6px;height:6px;border-radius:50%;background:#7c4ddb"></span>gmail <span style="color:#a9a496">4</span></span>
+              </div>
+            </div>
+            <div style="display:flex;align-items:center;gap:8px;height:32px;padding:0 18px">
+              <span style="width:6px;height:6px;border-radius:50%;background:#1f7a4d;flex:none"></span>
+              <strong style="width:100px;font-size:12.5px;font-weight:700;color:#17150f;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Т-Банк</strong>
+              <span style="flex:1;min-width:0;font-size:12.5px;font-weight:600;color:#17150f;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Код подтверждения 4821</span>
+              <span style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:#6b6659">14:22</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:8px;height:32px;padding:0 18px;border-top:1px solid #f4f1e7">
+              <span></span>
+              <span style="width:100px;font-size:12.5px;color:#5c584d;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Т-Инвестиции</span>
+              <span style="flex:1;min-width:0;font-size:12.5px;color:#5c584d;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Отчёт за август</span>
+              <span style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:#a9a496">09:15</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:8px;height:32px;padding:0 18px;border-top:1px solid #f4f1e7">
+              <span></span>
+              <span style="width:100px;font-size:12.5px;color:#5c584d;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Т-Банк</span>
+              <span style="flex:1;min-width:0;font-size:12.5px;color:#5c584d;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Кэшбэк за август</span>
+              <span style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:#a9a496">Вчера</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:8px;padding:9px 18px;border-top:1px solid #eae6da;background:#faf8f2">
+              <span style="font-family:'IBM Plex Mono',monospace;font-size:9.5px;color:#8d887a">письма только из mail.ru · колонка «аккаунт» скрыта</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section style="display:flex;flex-direction:column;gap:56px;padding:56px;font-family:'IBM Plex Sans',system-ui,sans-serif">
+
+  <div id="2a" style="display:flex;flex-direction:column;gap:20px;width:1440px">
+    <div style="display:flex;align-items:center;gap:14px">
+      <span style="font-family:'IBM Plex Mono',monospace;font-size:11px;font-weight:600;letter-spacing:.1em;color:#17150f;border:1px solid #17150f;padding:3px 8px">2A</span>
+      <strong style="flex:none;white-space:nowrap;font-size:20px;font-weight:600;letter-spacing:-0.01em;color:#17150f">Открытое письмо и ветвь диалога</strong>
+      <span style="flex:1;min-width:0;font-size:14px;color:#6b6659">⏎ на строке — список сжимается до 340px, письмо занимает остальное. Ни табов, ни второго сайдбара.</span>
+    </div>
+
+    <!-- ===== main window 1440x900 ===== -->
+    <div style="width:1440px;height:900px;display:grid;grid-template-columns:56px 340px minmax(0,1fr);background:#fbfaf7;border:1px solid #d7d3c8;border-radius:11px;overflow:hidden;box-shadow:0 30px 70px -30px rgba(23,21,15,.45)">
+
+      <!-- rail: spaces = tags -->
+      <div style="display:flex;flex-direction:column;align-items:center;gap:0;padding:0 0 12px;background:#f1eee6;border-right:1px solid #e3dfd4">
+        <div style="display:flex;flex-direction:column;gap:6px;padding:14px 0 16px">
+          <span style="width:10px;height:10px;border-radius:50%;background:#d5d0c2"></span>
+          <span style="width:10px;height:10px;border-radius:50%;background:#d5d0c2"></span>
+          <span style="width:10px;height:10px;border-radius:50%;background:#d5d0c2"></span>
+        </div>
+
+        <div style="display:flex;flex-direction:column;align-items:center;gap:7px;flex:1">
+          <div style="width:34px;height:34px;border-radius:10px;background:#fffefb;border:1px solid #e0dbcd;display:flex;align-items:center;justify-content:center;font-family:'IBM Plex Mono',monospace;font-size:13px;color:#5c584d">⌂</div>
+          <div style="position:relative;width:34px;height:34px;border-radius:10px;background:#fffefb;border:1px solid #e0dbcd;display:flex;align-items:center;justify-content:center;font-family:'IBM Plex Mono',monospace;font-size:12px;color:#5c584d">∗</div>
+          <div style="width:18px;height:1px;background:#e0dbcd;margin:3px 0"></div>
+
+          <div style="position:relative;width:34px;height:34px;border-radius:10px;background:#e4efe7;box-shadow:inset 0 0 0 1.5px #1f7a4d;display:flex;align-items:center;justify-content:center;font-family:'IBM Plex Mono',monospace;font-size:11px;font-weight:600;color:#1f7a4d">₽
+            <span style="position:absolute;left:-6px;top:9px;width:3px;height:16px;border-radius:2px;background:#1f7a4d"></span>
+          </div>
+          <div style="width:34px;height:34px;border-radius:10px;background:#f6e8e1;display:flex;align-items:center;justify-content:center;font-family:'IBM Plex Mono',monospace;font-size:12px;color:#b3421c">!</div>
+          <div style="position:relative;width:34px;height:34px;border-radius:10px;background:#e8eef8;display:flex;align-items:center;justify-content:center;font-family:'IBM Plex Mono',monospace;font-size:12px;color:#1550b0">▤
+            <span style="position:absolute;top:-2px;right:-2px;min-width:15px;height:15px;border-radius:99px;background:#17150f;color:#fffefb;font-size:9px;font-weight:600;display:flex;align-items:center;justify-content:center;padding:0 3px">4</span>
+          </div>
+          <div style="width:34px;height:34px;border-radius:10px;background:#e7f1f4;display:flex;align-items:center;justify-content:center;font-family:'IBM Plex Mono',monospace;font-size:12px;color:#006d87">‹›</div>
+          <div style="width:34px;height:34px;border-radius:10px;background:#f6efdd;display:flex;align-items:center;justify-content:center;font-family:'IBM Plex Mono',monospace;font-size:12px;color:#a06a08">%</div>
+          <div style="width:34px;height:34px;border-radius:10px;background:#f8e9f0;display:flex;align-items:center;justify-content:center;font-family:'IBM Plex Mono',monospace;font-size:12px;color:#a02862">♡</div>
+          <div style="width:34px;height:34px;border-radius:10px;border:1px dashed #dcd7c8;display:flex;align-items:center;justify-content:center;font-family:'IBM Plex Mono',monospace;font-size:13px;color:#a9a496">+</div>
+        </div>
+
+        <div style="display:flex;flex-direction:column;align-items:center;gap:9px">
+          <div style="display:flex;flex-direction:column;align-items:center;gap:5px">
+            <span style="width:7px;height:7px;border-radius:50%;background:#2774e6"></span>
+            <span style="width:7px;height:7px;border-radius:50%;background:#d63e83"></span>
+            <span style="width:7px;height:7px;border-radius:50%;background:#7c4ddb"></span>
+          </div>
+          <div style="width:18px;height:1px;background:#e0dbcd"></div>
+          <div style="width:30px;height:30px;border-radius:9px;background:#17150f;color:#fffefb;display:flex;align-items:center;justify-content:center;font-size:14px">✎</div>
+        </div>
+      </div>
+
+      <!-- list column -->
+      <div style="display:flex;flex-direction:column;background:#fffefb;border-right:1px solid #e3dfd4;overflow:hidden">
+
+        <!-- space header: aggregation across accounts -->
+        <div style="display:flex;flex-direction:column;gap:9px;padding:16px 16px 12px;border-bottom:1px solid #eae6da">
+          <div style="display:flex;align-items:center;gap:9px">
+            <span style="width:9px;height:9px;border-radius:3px;background:#1f7a4d"></span>
+            <strong style="flex:1;font-size:15px;font-weight:600;letter-spacing:-0.01em;color:#17150f">Финансы</strong>
+            <span style="font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:#8d887a">31 · 4 непроч.</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:5px">
+            <span style="display:flex;align-items:center;gap:6px;font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.04em;color:#17150f;background:#f2efe6;padding:3px 8px;border-radius:99px">3 аккаунта</span>
+            <span style="display:flex;align-items:center;gap:5px;font-family:'IBM Plex Mono',monospace;font-size:10px;color:#6b6659;padding:3px 7px;border-radius:99px"><span style="width:6px;height:6px;border-radius:50%;background:#2774e6"></span>18</span>
+            <span style="display:flex;align-items:center;gap:5px;font-family:'IBM Plex Mono',monospace;font-size:10px;color:#6b6659;padding:3px 7px;border-radius:99px"><span style="width:6px;height:6px;border-radius:50%;background:#d63e83"></span>9</span>
+            <span style="display:flex;align-items:center;gap:5px;font-family:'IBM Plex Mono',monospace;font-size:10px;color:#6b6659;padding:3px 7px;border-radius:99px"><span style="width:6px;height:6px;border-radius:50%;background:#7c4ddb"></span>4</span>
+            <span style="flex:1"></span>
+            <span style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:#a9a496">⌥K</span>
+          </div>
+        </div>
+
+        <div style="display:flex;align-items:center;gap:8px;padding:8px 16px 6px">
+          <span style="font-family:'IBM Plex Mono',monospace;font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:#a9a496">Сегодня</span>
+          <span style="flex:1;height:1px;background:#f0ece0"></span>
+        </div>
+
+        <!-- selected, unread -->
+        <div style="display:flex;align-items:center;gap:8px;height:32px;padding:0 16px;background:#f2efe6;box-shadow:inset 2px 0 0 #1f7a4d">
+          <span style="width:6px;height:6px;border-radius:50%;background:#2774e6;flex:none"></span>
+          <strong style="width:96px;font-size:12.5px;font-weight:700;color:#17150f;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Т-Банк</strong>
+          <span style="flex:1;min-width:0;font-size:12.5px;font-weight:600;color:#17150f;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Код подтверждения 4821 <span style="font-weight:400;color:#a9a496">— никому не сообщайте код…</span></span>
+          <span style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:#6b6659;flex:none">14:22</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;height:32px;padding:0 16px;border-top:1px solid #f4f1e7">
+          <span style="width:6px;height:6px;border-radius:50%;background:#d63e83;flex:none"></span>
+          <strong style="width:96px;font-size:12.5px;font-weight:700;color:#17150f;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Сбербанк</strong>
+          <span style="flex:1;min-width:0;font-size:12.5px;font-weight:600;color:#17150f;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Выписка за август <span style="font-weight:400;color:#a9a496">— PDF, 240 КБ…</span></span>
+          <span style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:#6b6659;flex:none">12:08</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;height:32px;padding:0 16px;border-top:1px solid #f4f1e7">
+          <span style="width:6px;height:6px;border-radius:50%;background:#7c4ddb;flex:none"></span>
+          <span style="width:96px;font-size:12.5px;color:#5c584d;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Stripe</span>
+          <span style="flex:1;min-width:0;font-size:12.5px;color:#5c584d;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Your invoice is available <span style="color:#a9a496">— $12.00 · letter-box…</span></span>
+          <span style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:#a9a496;flex:none">10:41</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;height:32px;padding:0 16px;border-top:1px solid #f4f1e7">
+          <span style="width:6px;height:6px;border-radius:50%;background:#2774e6;flex:none"></span>
+          <span style="width:96px;font-size:12.5px;color:#5c584d;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Т-Инвестиции</span>
+          <span style="flex:1;min-width:0;font-size:12.5px;color:#5c584d;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Отчёт за август <span style="color:#a9a496">— портфель, дивиденды, налоги…</span></span>
+          <span style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:#a9a496;flex:none">09:15</span>
+        </div>
+
+        <div style="display:flex;align-items:center;gap:8px;padding:12px 16px 6px">
+          <span style="font-family:'IBM Plex Mono',monospace;font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:#a9a496">Вчера</span>
+          <span style="flex:1;height:1px;background:#f0ece0"></span>
+        </div>
+
+        <div style="display:flex;align-items:center;gap:8px;height:32px;padding:0 16px">
+          <span style="width:6px;height:6px;border-radius:50%;background:#d63e83;flex:none"></span>
+          <strong style="width:96px;font-size:12.5px;font-weight:700;color:#17150f;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">ЖКХ Москва</strong>
+          <span style="flex:1;min-width:0;font-size:12.5px;font-weight:600;color:#17150f;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Начисления за август <span style="font-weight:400;color:#a9a496">— 4 812,40 ₽ к оплате…</span></span>
+          <span style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:#6b6659;flex:none">19:44</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;height:32px;padding:0 16px;border-top:1px solid #f4f1e7">
+          <span style="width:6px;height:6px;border-radius:50%;background:#2774e6;flex:none"></span>
+          <span style="width:96px;font-size:12.5px;color:#5c584d;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Т-Банк</span>
+          <span style="flex:1;min-width:0;font-size:12.5px;color:#5c584d;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Кэшбэк за август <span style="color:#a9a496">— 1 204 ₽ зачислены…</span></span>
+          <span style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:#a9a496;flex:none">18:20</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;height:32px;padding:0 16px;border-top:1px solid #f4f1e7">
+          <span style="width:6px;height:6px;border-radius:50%;background:#7c4ddb;flex:none"></span>
+          <span style="width:96px;font-size:12.5px;color:#5c584d;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">GitHub</span>
+          <span style="flex:1;min-width:0;font-size:12.5px;color:#5c584d;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Payment receipt · Copilot <span style="color:#a9a496">— $10.00…</span></span>
+          <span style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:#a9a496;flex:none">11:02</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;height:32px;padding:0 16px;border-top:1px solid #f4f1e7">
+          <span style="width:6px;height:6px;border-radius:50%;background:#d63e83;flex:none"></span>
+          <span style="width:96px;font-size:12.5px;color:#5c584d;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Мосэнерго</span>
+          <span style="flex:1;min-width:0;font-size:12.5px;color:#5c584d;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Показания счётчика <span style="color:#a9a496">— передайте до 25 числа…</span></span>
+          <span style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:#a9a496;flex:none">09:30</span>
+        </div>
+
+        <div style="display:flex;align-items:center;gap:8px;padding:12px 16px 6px">
+          <span style="font-family:'IBM Plex Mono',monospace;font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:#a9a496">4 сентября</span>
+          <span style="flex:1;height:1px;background:#f0ece0"></span>
+        </div>
+
+        <div style="display:flex;align-items:center;gap:8px;height:32px;padding:0 16px">
+          <span style="width:6px;height:6px;border-radius:50%;background:#2774e6;flex:none"></span>
+          <span style="width:96px;font-size:12.5px;color:#5c584d;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Альфа-Банк</span>
+          <span style="flex:1;min-width:0;font-size:12.5px;color:#5c584d;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Ставка по вкладу изменилась <span style="color:#a9a496">— с 12 сентября…</span></span>
+          <span style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:#a9a496;flex:none">4 сен</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;height:32px;padding:0 16px;border-top:1px solid #f4f1e7">
+          <span style="width:6px;height:6px;border-radius:50%;background:#7c4ddb;flex:none"></span>
+          <span style="width:96px;font-size:12.5px;color:#5c584d;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">App Store</span>
+          <span style="flex:1;min-width:0;font-size:12.5px;color:#5c584d;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Ваш счёт · подписки <span style="color:#a9a496">— 3 позиции, 897 ₽…</span></span>
+          <span style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:#a9a496;flex:none">4 сен</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;height:32px;padding:0 16px;border-top:1px solid #f4f1e7">
+          <span style="width:6px;height:6px;border-radius:50%;background:#d63e83;flex:none"></span>
+          <span style="width:96px;font-size:12.5px;color:#5c584d;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Налог.ру</span>
+          <span style="flex:1;min-width:0;font-size:12.5px;color:#5c584d;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Уведомление о начислении <span style="color:#a9a496">— срок 1 декабря…</span></span>
+          <span style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:#a9a496;flex:none">4 сен</span>
+        </div>
+
+        <div style="flex:1"></div>
+        <div style="display:flex;align-items:center;gap:9px;padding:10px 16px;border-top:1px solid #eae6da;background:#faf8f2">
+          <span style="display:block;width:11px;height:11px;border:1.5px solid #cfe0d5;border-top-color:#1f7a4d;border-radius:50%;animation:lbspin 1s linear infinite;flex:none"></span>
+          <span style="font-family:'IBM Plex Mono',monospace;font-size:9.5px;letter-spacing:.06em;text-transform:uppercase;color:#8d887a;flex:1">Ollama размечает 9 писем</span>
+          <span style="font-family:'IBM Plex Mono',monospace;font-size:9.5px;color:#a9a496">178/214</span>
+        </div>
+      </div>
+
+      <!-- reader -->
+      <div style="display:flex;flex-direction:column;background:#fbfaf7;overflow:hidden">
+
+        <!-- floating action strip, no header bar -->
+        <div style="display:flex;align-items:center;gap:8px;padding:14px 30px 0">
+          <span style="display:flex;align-items:center;gap:7px;font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:#1f7a4d;background:#e4efe7;padding:4px 9px;border-radius:99px">
+            <span style="width:6px;height:6px;border-radius:2px;background:#1f7a4d"></span>Финансы
+          </span>
+          <span style="display:flex;align-items:center;gap:7px;font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:#b3421c;background:#f6e8e1;padding:4px 9px;border-radius:99px">
+            <span style="width:6px;height:6px;border-radius:2px;background:#b3421c"></span>Важные
+          </span>
+          <span style="font-family:'IBM Plex Mono',monospace;font-size:9.5px;color:#a9a496">AI · qwen3:0.6b</span>
+          <span style="flex:1"></span>
+          <span style="font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:#17150f;background:#fffefb;border:1px solid #ddd8ca;padding:5px 11px;border-radius:7px">Ответить</span>
+          <span style="font-family:'IBM Plex Mono',monospace;font-size:11px;color:#5c584d;background:#fffefb;border:1px solid #e6e1d4;padding:5px 9px;border-radius:7px">↪</span>
+          <span style="font-family:'IBM Plex Mono',monospace;font-size:11px;color:#5c584d;background:#fffefb;border:1px solid #e6e1d4;padding:5px 9px;border-radius:7px">★</span>
+          <span style="font-family:'IBM Plex Mono',monospace;font-size:11px;color:#5c584d;background:#fffefb;border:1px solid #e6e1d4;padding:5px 9px;border-radius:7px">□</span>
+          <span style="font-family:'IBM Plex Mono',monospace;font-size:11px;color:#5c584d;background:#fffefb;border:1px solid #e6e1d4;padding:5px 9px;border-radius:7px">⌫</span>
+        </div>
+
+        <!-- thread: branch spine + big body -->
+        <div style="flex:1;display:flex;flex-direction:column;padding:20px 30px 26px;overflow:hidden">
+
+          <!-- collapsed ancestors: marker lives inside each row -->
+          <div style="display:flex;align-items:stretch;gap:0">
+            <div style="position:relative;width:26px;flex:none">
+              <div style="position:absolute;left:11px;top:0;bottom:0;width:1px;background:#e6e1d4"></div>
+              <div style="position:absolute;left:6px;top:11px;width:11px;height:11px;border-radius:50%;background:#fbfaf7;border:1.5px solid #cfc9b8"></div>
+            </div>
+            <div style="flex:1;min-width:0;display:flex;align-items:center;gap:10px;height:34px;padding:0 12px 0 4px;border-bottom:1px solid #f0ece0">
+              <span style="width:96px;font-size:12.5px;font-weight:600;color:#5c584d;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Вы</span>
+              <span style="flex:1;min-width:0;font-size:12.5px;color:#8d887a;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Запросил вход в личный кабинет — устройство macOS…</span>
+              <span style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:#a9a496">14:19</span>
+            </div>
+          </div>
+          <div style="display:flex;align-items:stretch;gap:0">
+            <div style="position:relative;width:26px;flex:none">
+              <div style="position:absolute;left:11px;top:0;bottom:0;width:1px;background:#e6e1d4"></div>
+              <div style="position:absolute;left:6px;top:11px;width:11px;height:11px;border-radius:50%;background:#fbfaf7;border:1.5px solid #cfc9b8"></div>
+            </div>
+            <div style="flex:1;min-width:0;display:flex;align-items:center;gap:10px;height:34px;padding:0 12px 0 4px;border-bottom:1px solid #f0ece0">
+              <span style="width:96px;font-size:12.5px;font-weight:600;color:#5c584d;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Т-Банк</span>
+              <span style="flex:1;min-width:0;font-size:12.5px;color:#8d887a;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Подтвердите, что это вы — иначе смените пароль…</span>
+              <span style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:#a9a496">14:20</span>
+            </div>
+          </div>
+
+          <!-- open message: line stops at its own node -->
+          <div style="display:flex;align-items:stretch;gap:0;min-width:0">
+            <div style="position:relative;width:26px;flex:none">
+              <div style="position:absolute;left:11px;top:0;height:41px;width:1px;background:#e6e1d4"></div>
+              <div style="position:absolute;left:5px;top:35px;width:13px;height:13px;border-radius:50%;background:#1f7a4d;box-shadow:0 0 0 3px #e4efe7"></div>
+            </div>
+            <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:20px;padding:22px 4px 0">
+              <div style="display:flex;flex-direction:column;gap:10px">
+                <h1 style="margin:0;font-size:30px;font-weight:600;letter-spacing:-0.025em;line-height:1.2;color:#17150f;text-wrap:pretty">Код подтверждения 4821</h1>
+                <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+                  <span style="font-size:13px;font-weight:600;color:#17150f">Т-Банк</span>
+                  <span style="font-family:'IBM Plex Mono',monospace;font-size:11px;color:#8d887a">noreply@tbank.ru</span>
+                  <span style="width:1px;height:11px;background:#ddd8ca"></span>
+                  <span style="font-family:'IBM Plex Mono',monospace;font-size:11px;color:#8d887a">6 сентября, 14:22</span>
+                  <span style="width:1px;height:11px;background:#ddd8ca"></span>
+                  <span style="display:flex;align-items:center;gap:6px"><span style="width:6px;height:6px;border-radius:50%;background:#2774e6"></span><span style="font-family:'IBM Plex Mono',monospace;font-size:11px;color:#8d887a">ivan@mail.ru</span></span>
+                </div>
+              </div>
+
+              <div style="max-width:720px;display:flex;flex-direction:column;gap:20px">
+                <p style="margin:0;font-size:15.5px;line-height:1.7;color:#2c2920;text-wrap:pretty">Здравствуйте, Иван. Вы запросили вход в личный кабинет с нового устройства. Ваш одноразовый код:</p>
+                <div style="align-self:flex-start;font-family:'IBM Plex Mono',monospace;font-size:34px;font-weight:600;letter-spacing:.24em;color:#17150f;background:#f2efe6;border:1px solid #e6e1d4;border-radius:8px;padding:16px 26px">4821</div>
+                <p style="margin:0;font-size:15.5px;line-height:1.7;color:#2c2920;text-wrap:pretty">Код действует 5 минут и подходит только для одного входа. Никому его не сообщайте — сотрудники банка никогда не спрашивают код по телефону, в чате или в письме.</p>
+                <p style="margin:0;font-size:15.5px;line-height:1.7;color:#2c2920;text-wrap:pretty">Если вход запрашивали не вы, смените пароль в приложении и позвоните на горячую линию. Мы заблокируем попытку входа и проверим активность по счёту.</p>
+                <div style="display:flex;align-items:center;gap:14px;padding:14px 16px;background:#fffefb;border:1px solid #e6e1d4;border-radius:9px">
+                  <div style="width:30px;height:30px;border-radius:7px;background:#f2efe6;display:flex;align-items:center;justify-content:center;font-family:'IBM Plex Mono',monospace;font-size:11px;color:#8d887a">PDF</div>
+                  <div style="flex:1;display:flex;flex-direction:column;gap:1px">
+                    <strong style="font-size:12.5px;font-weight:600;color:#17150f">memo-bezopasnost.pdf</strong>
+                    <span style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:#a9a496">96 КБ</span>
+                  </div>
+                  <span style="font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:#5c584d;border:1px solid #e6e1d4;padding:4px 9px;border-radius:6px">Скачать</span>
+                </div>
+              </div>
+
+              <!-- branch: two replies fork -->
+              <div style="max-width:720px;display:flex;flex-direction:column;gap:0;padding-top:6px">
+                <div style="display:flex;align-items:center;gap:9px;padding-bottom:8px">
+                  <span style="font-family:'IBM Plex Mono',monospace;font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;color:#a9a496">Ветвь диалога</span>
+                  <span style="flex:1;height:1px;background:#f0ece0"></span>
+                  <span style="font-family:'IBM Plex Mono',monospace;font-size:9.5px;color:#a9a496">2 ответа</span>
+                </div>
+                <div style="display:flex;align-items:stretch;gap:0">
+                  <div style="position:relative;width:22px;flex:none">
+                    <div style="position:absolute;left:5px;top:0;bottom:0;width:1px;background:#e6e1d4"></div>
+                  </div>
+                  <div style="position:relative;flex:1;min-width:0;margin-bottom:6px;display:flex;align-items:center;gap:10px;height:32px;padding:0 12px;background:#fffefb;border:1px solid #e6e1d4;border-radius:8px">
+                    <div style="position:absolute;left:-12px;top:50%;width:12px;height:1px;background:#e6e1d4"></div>
+                    <span style="width:6px;height:6px;border-radius:50%;background:#2774e6;flex:none"></span>
+                    <span style="width:86px;font-size:12.5px;font-weight:600;color:#17150f;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Вы</span>
+                    <span style="flex:1;min-width:0;font-size:12.5px;color:#5c584d;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Это я, вход подтверждаю</span>
+                    <span style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:#a9a496">14:23</span>
+                  </div>
+                </div>
+                <div style="display:flex;align-items:stretch;gap:0">
+                  <div style="position:relative;width:22px;flex:none">
+                    <div style="position:absolute;left:5px;top:0;bottom:50%;width:1px;background:#e6e1d4"></div>
+                  </div>
+                  <div style="position:relative;flex:1;min-width:0;display:flex;align-items:center;gap:10px;height:32px;padding:0 12px;background:#fffefb;border:1px solid #e6e1d4;border-radius:8px">
+                    <div style="position:absolute;left:-12px;top:50%;width:12px;height:1px;background:#e6e1d4"></div>
+                    <span style="width:6px;height:6px;border-radius:50%;background:#d63e83;flex:none"></span>
+                    <span style="width:86px;font-size:12.5px;font-weight:600;color:#17150f;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Т-Банк</span>
+                    <span style="flex:1;min-width:0;font-size:12.5px;color:#5c584d;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Вход выполнен · устройство добавлено в доверенные</span>
+                    <span style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:#a9a496">14:25</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== secondary frames ===== -->
+    <div style="display:flex;gap:24px;flex-wrap:wrap">
+
+      <!-- tag palette overlay -->
+      <sc-if value="{{ showPalette }}" hint-placeholder-val="{{ true }}">
+      <div style="display:flex;flex-direction:column;gap:11px;width:700px">
+        <span style="font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:#6b6659">⌥K · переход между тегами, счётчики по всем аккаунтам</span>
+        <div style="background:#fbfaf7;border:1px solid #d7d3c8;border-radius:11px;padding:14px;box-shadow:0 22px 50px -26px rgba(23,21,15,.4)">
+          <div style="display:flex;align-items:center;gap:10px;padding:6px 10px 12px;border-bottom:1px solid #eae6da">
+            <span style="font-family:'IBM Plex Mono',monospace;font-size:12px;color:#a9a496">›</span>
+            <span style="flex:1;font-size:14px;color:#17150f">фин</span>
+            <span style="font-family:'IBM Plex Mono',monospace;font-size:9.5px;letter-spacing:.06em;text-transform:uppercase;color:#a9a496">10 тегов · 3 аккаунта</span>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:2px;padding-top:8px">
+            <div style="display:flex;align-items:center;gap:11px;height:34px;padding:0 10px;border-radius:8px;background:#f2efe6">
+              <span style="width:8px;height:8px;border-radius:3px;background:#1f7a4d"></span>
+              <strong style="flex:1;font-size:13px;font-weight:600;color:#17150f">Финансы</strong>
+              <span style="display:flex;align-items:center;gap:4px;font-family:'IBM Plex Mono',monospace;font-size:10px;color:#6b6659"><span style="width:6px;height:6px;border-radius:50%;background:#2774e6"></span>18</span>
+              <span style="display:flex;align-items:center;gap:4px;font-family:'IBM Plex Mono',monospace;font-size:10px;color:#6b6659"><span style="width:6px;height:6px;border-radius:50%;background:#d63e83"></span>9</span>
+              <span style="display:flex;align-items:center;gap:4px;font-family:'IBM Plex Mono',monospace;font-size:10px;color:#6b6659"><span style="width:6px;height:6px;border-radius:50%;background:#7c4ddb"></span>4</span>
+              <span style="font-family:'IBM Plex Mono',monospace;font-size:10px;font-weight:600;color:#17150f;width:34px;text-align:right">31</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:11px;height:34px;padding:0 10px;border-radius:8px">
+              <span style="width:8px;height:8px;border-radius:3px;background:#b3421c"></span>
+              <span style="flex:1;font-size:13px;color:#5c584d">Важные</span>
+              <span style="display:flex;align-items:center;gap:4px;font-family:'IBM Plex Mono',monospace;font-size:10px;color:#8d887a"><span style="width:6px;height:6px;border-radius:50%;background:#2774e6"></span>4</span>
+              <span style="display:flex;align-items:center;gap:4px;font-family:'IBM Plex Mono',monospace;font-size:10px;color:#8d887a"><span style="width:6px;height:6px;border-radius:50%;background:#d63e83"></span>2</span>
+              <span style="display:flex;align-items:center;gap:4px;font-family:'IBM Plex Mono',monospace;font-size:10px;color:#8d887a"><span style="width:6px;height:6px;border-radius:50%;background:#7c4ddb"></span>—</span>
+              <span style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:#5c584d;width:34px;text-align:right">6</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:11px;height:34px;padding:0 10px;border-radius:8px">
+              <span style="width:8px;height:8px;border-radius:3px;background:#a06a08"></span>
+              <span style="flex:1;font-size:13px;color:#5c584d">Акции</span>
+              <span style="display:flex;align-items:center;gap:4px;font-family:'IBM Plex Mono',monospace;font-size:10px;color:#8d887a"><span style="width:6px;height:6px;border-radius:50%;background:#2774e6"></span>12</span>
+              <span style="display:flex;align-items:center;gap:4px;font-family:'IBM Plex Mono',monospace;font-size:10px;color:#8d887a"><span style="width:6px;height:6px;border-radius:50%;background:#d63e83"></span>21</span>
+              <span style="display:flex;align-items:center;gap:4px;font-family:'IBM Plex Mono',monospace;font-size:10px;color:#8d887a"><span style="width:6px;height:6px;border-radius:50%;background:#7c4ddb"></span>8</span>
+              <span style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:#5c584d;width:34px;text-align:right">41</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:11px;height:34px;padding:0 10px;border-radius:8px">
+              <span style="width:8px;height:8px;border-radius:3px;background:#006d87"></span>
+              <span style="flex:1;font-size:13px;color:#5c584d">IT</span>
+              <span style="display:flex;align-items:center;gap:4px;font-family:'IBM Plex Mono',monospace;font-size:10px;color:#8d887a"><span style="width:6px;height:6px;border-radius:50%;background:#2774e6"></span>3</span>
+              <span style="display:flex;align-items:center;gap:4px;font-family:'IBM Plex Mono',monospace;font-size:10px;color:#8d887a"><span style="width:6px;height:6px;border-radius:50%;background:#d63e83"></span>1</span>
+              <span style="display:flex;align-items:center;gap:4px;font-family:'IBM Plex Mono',monospace;font-size:10px;color:#8d887a"><span style="width:6px;height:6px;border-radius:50%;background:#7c4ddb"></span>14</span>
+              <span style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:#5c584d;width:34px;text-align:right">18</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      </sc-if>
+
+      <!-- deep thread branch -->
+      <sc-if value="{{ showThreadDetail }}" hint-placeholder-val="{{ true }}">
+      <div style="display:flex;flex-direction:column;gap:11px;width:692px">
+        <span style="font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:#6b6659">Ветвление · тред разошёлся на две линии</span>
+        <div style="background:#fbfaf7;border:1px solid #d7d3c8;border-radius:11px;padding:18px 20px">
+          <div style="display:flex;flex-direction:column;gap:0">
+            <div style="display:flex;align-items:stretch;gap:0">
+              <div style="position:relative;width:24px;flex:none">
+                <div style="position:absolute;left:7px;top:0;bottom:0;width:1px;background:#ddd8ca"></div>
+                <div style="position:absolute;left:2px;top:10px;width:11px;height:11px;border-radius:50%;background:#fbfaf7;border:1.5px solid #cfc9b8"></div>
+              </div>
+              <div style="flex:1;min-width:0;display:flex;align-items:center;gap:10px;height:32px">
+                <span style="width:88px;font-size:12.5px;font-weight:600;color:#17150f;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Анна К.</span>
+                <span style="flex:1;min-width:0;font-size:12.5px;color:#5c584d;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Правки к макетам синхронизации</span>
+                <span style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:#a9a496">пн 10:02</span>
+              </div>
+            </div>
+            <div style="display:flex;align-items:stretch;gap:0">
+              <div style="position:relative;width:24px;flex:none">
+                <div style="position:absolute;left:7px;top:0;bottom:0;width:1px;background:#ddd8ca"></div>
+                <div style="position:absolute;left:2px;top:10px;width:11px;height:11px;border-radius:50%;background:#fbfaf7;border:1.5px solid #cfc9b8"></div>
+              </div>
+              <div style="flex:1;min-width:0;display:flex;align-items:center;gap:10px;height:32px">
+                <span style="width:88px;font-size:12.5px;font-weight:600;color:#17150f;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Вы</span>
+                <span style="flex:1;min-width:0;font-size:12.5px;color:#5c584d;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Ок, но очередь задач надо обсудить отдельно</span>
+                <span style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:#a9a496">пн 11:14</span>
+              </div>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:6px;padding-left:24px">
+              <div style="display:flex;align-items:center;gap:9px;padding:8px 0 4px">
+                <span style="font-family:'IBM Plex Mono',monospace;font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;color:#a9a496">2 ветки</span>
+                <span style="flex:1;height:1px;background:#f0ece0"></span>
+              </div>
+
+              <div style="display:flex;align-items:stretch;gap:0">
+                <div style="position:relative;width:22px;flex:none">
+                  <div style="position:absolute;left:0;top:0;bottom:0;width:1px;background:#ddd8ca"></div>
+                </div>
+                <div style="position:relative;flex:1;min-width:0;margin-bottom:8px;display:flex;flex-direction:column;gap:4px;padding:10px 12px;background:#fffefb;border:1px solid #e6e1d4;border-radius:8px;box-shadow:inset 2px 0 0 #1550b0">
+                  <div style="position:absolute;left:-14px;top:50%;width:14px;height:1px;background:#ddd8ca"></div>
+                  <div style="display:flex;align-items:center;gap:9px">
+                    <span style="width:6px;height:6px;border-radius:50%;background:#2774e6;flex:none"></span>
+                    <strong style="flex:1;font-size:12.5px;font-weight:600;color:#17150f">Ветка «очередь задач» · 4 письма</strong>
+                    <span style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:#a9a496">ср 09:40</span>
+                  </div>
+                  <span style="font-size:12px;color:#8d887a;padding-left:15px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Анна, Дмитрий, вы — BullMQ, приоритеты, ретраи…</span>
+                </div>
+              </div>
+              <div style="display:flex;align-items:stretch;gap:0">
+                <div style="position:relative;width:22px;flex:none">
+                  <div style="position:absolute;left:0;top:0;bottom:50%;width:1px;background:#ddd8ca"></div>
+                </div>
+                <div style="position:relative;flex:1;min-width:0;display:flex;flex-direction:column;gap:4px;padding:10px 12px;background:#fffefb;border:1px solid #e6e1d4;border-radius:8px">
+                  <div style="position:absolute;left:-14px;top:50%;width:14px;height:1px;background:#ddd8ca"></div>
+                  <div style="display:flex;align-items:center;gap:9px">
+                    <span style="width:6px;height:6px;border-radius:50%;background:#d63e83;flex:none"></span>
+                    <strong style="flex:1;font-size:12.5px;font-weight:600;color:#17150f">Ветка «макеты» · 2 письма</strong>
+                    <span style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:#a9a496">вт 18:05</span>
+                  </div>
+                  <span style="font-size:12px;color:#8d887a;padding-left:15px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Пришла с другого адреса — Letter Box склеил тред по References</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      </sc-if>
+    </div>
+  </div>
+</section>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;showPalette&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Фрагменты&quot;},&quot;showThreadDetail&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Фрагменты&quot;}}">
+class Component extends DCLogic {
+  renderVals() {
+    return {
+      showPalette: this.props.showPalette ?? true,
+      showThreadDetail: this.props.showThreadDetail ?? true,
+    };
+  }
+}
+</script>
+</body>
+</html>

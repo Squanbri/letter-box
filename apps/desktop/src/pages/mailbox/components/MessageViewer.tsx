@@ -1,8 +1,9 @@
-import { useState, useEffect, useRef } from 'react';
-import { Button, Group, Select, Stack, Text, Title } from '@mantine/core';
+import { useEffect, useRef } from 'react';
 import type { MailboxInfo, Message } from '../../../shared/api/client';
+import { accountColor } from '../../../shared/lib/accountColor';
 import { prepareEmailHtml } from '../../../shared/lib/email-html';
 import { isSeen, mailboxDisplayName, tagLabel } from '../../../shared/lib/format';
+import { tagBg, tagColor } from '../../../shared/lib/tagColor';
 import { EmptyState, LoadingState } from '../../../shared/ui/AsyncState';
 
 function AutoIframe({ srcDoc, title }: { srcDoc: string; title: string }) {
@@ -11,7 +12,6 @@ function AutoIframe({ srcDoc, title }: { srcDoc: string; title: string }) {
   const resize = () => {
     const frame = ref.current;
     if (!frame?.contentDocument?.body) return;
-    // Let the content determine its own height
     frame.style.height = '0';
     frame.style.height = `${frame.contentDocument.documentElement.scrollHeight}px`;
   };
@@ -29,13 +29,14 @@ function AutoIframe({ srcDoc, title }: { srcDoc: string; title: string }) {
       title={title}
       sandbox="allow-popups allow-popups-to-escape-sandbox"
       srcDoc={srcDoc}
-      style={{ width: '100%', border: 0, display: 'block', background: 'white' }}
+      style={{ width: '100%', border: 0, display: 'block', background: 'transparent' }}
     />
   );
 }
 
 export function MessageViewer({
   message,
+  accountEmail,
   thread,
   mailboxes,
   loading,
@@ -53,6 +54,7 @@ export function MessageViewer({
   onDelete,
 }: {
   message: Message | null;
+  accountEmail?: string;
   thread: Message[];
   mailboxes: MailboxInfo[];
   loading: boolean;
@@ -69,156 +71,162 @@ export function MessageViewer({
   onArchive: (message: Message) => void;
   onDelete: (message: Message, permanent: boolean) => void;
 }) {
-  const [headerVisible, setHeaderVisible] = useState(true);
-
   if (!message) return <article className="message-view"><EmptyState text="Выберите письмо" /></article>;
+
   const archiveAvailable = mailboxes.some(
     (mailbox) => mailbox.specialUse === '\\Archive' && mailbox.path !== message.mailbox,
   );
   const trash = mailboxes.find((mailbox) => mailbox.specialUse === '\\Trash');
   const permanent = trash?.path === message.mailbox;
-  const threadItems = thread.length > 1 ? thread : [];
+  const ancestors = thread.filter(
+    (item) => !(item.mailbox === message.mailbox && item.uid === message.uid),
+  );
+  const flagged = message.flags.includes('\\Flagged');
+  const color = accountColor(message.accountId);
 
   return (
     <article className="message-view">
+      <div className="reader-action-strip">
+        <div className="reader-action-tags">
+          {message.tags.map((tag) => (
+            <span
+              key={tag}
+              className="ai-tag"
+              style={{ color: tagColor(tag), background: tagBg(tag) }}
+            >
+              {tagLabel(tag)}
+            </span>
+          ))}
+          <span className="ai-badge">AI</span>
+          <em>{new Date(message.date).toLocaleString('ru-RU', {
+            day: '2-digit',
+            month: 'short',
+            hour: '2-digit',
+            minute: '2-digit',
+          })}</em>
+        </div>
+        <div className="reader-action-buttons">
+          <button type="button" className="reader-btn primary" disabled={loading} onClick={() => onReply(message)}>
+            Ответить
+          </button>
+          <button type="button" className="reader-btn" disabled={loading} title="Переслать" onClick={() => onForward(message)}>
+            ↪
+          </button>
+          <button
+            type="button"
+            className="reader-btn"
+            disabled={flaggedPending || seenPending}
+            title={flagged ? 'Снять важное' : 'Важное'}
+            onClick={() => onFlagged(message, !flagged)}
+          >
+            {flagged ? '★' : '☆'}
+          </button>
+          {archiveAvailable && (
+            <button type="button" className="reader-btn" disabled={pending} title="Архив" onClick={() => onArchive(message)}>
+              □
+            </button>
+          )}
+          <button
+            type="button"
+            className="reader-btn"
+            disabled={pending}
+            title={permanent ? 'Удалить навсегда' : 'В корзину'}
+            onClick={() => onDelete(message, permanent)}
+          >
+            ⌫
+          </button>
+          <select
+            className="reader-move"
+            disabled={pending}
+            defaultValue=""
+            onChange={(event) => {
+              const destination = event.currentTarget.value;
+              if (destination) onMove(message, destination);
+              event.currentTarget.value = '';
+            }}
+          >
+            <option value="" disabled>Переместить…</option>
+            {mailboxes
+              .filter((mailbox) => mailbox.path !== message.mailbox)
+              .map((mailbox) => (
+                <option key={mailbox.path} value={mailbox.path}>
+                  {mailboxDisplayName(mailbox)}
+                </option>
+              ))}
+          </select>
+          <button
+            type="button"
+            className="reader-btn"
+            disabled={seenPending || flaggedPending}
+            onClick={() => onSeen(message, !isSeen(message))}
+          >
+            {isSeen(message) ? 'Непрочит.' : 'Прочит.'}
+          </button>
+        </div>
+      </div>
+
       <div className="message-canvas">
-        {(threadLoading || threadItems.length > 0) && (
-          <section className="thread-panel" aria-label="Ветка диалога">
-            <header>
-              <span className="eyebrow">Ветка диалога</span>
-              <strong>
-                {threadLoading ? '…' : `${threadItems.length} писем`}
-              </strong>
-            </header>
-            {!threadLoading && (
-              <ol className="thread-list">
-                {threadItems.map((item) => {
-                  const active = item.mailbox === message.mailbox && item.uid === message.uid;
-                  return (
-                    <li key={`${item.mailbox}:${item.uid}`}>
-                      <button
-                        type="button"
-                        className={active ? 'thread-item active' : 'thread-item'}
-                        onClick={() => onOpenThreadMessage(item)}
-                      >
-                        <span className="thread-from">
-                          {item.from.name || item.from.address || 'Без отправителя'}
-                        </span>
-                        <span className="thread-meta">
-                          <time>{new Date(item.date).toLocaleString('ru-RU', {
-                            day: '2-digit',
-                            month: 'short',
-                            hour: '2-digit',
-                            minute: '2-digit',
-                          })}</time>
-                          {item.mailbox !== message.mailbox && (
-                            <small>{mailboxDisplayName(
-                              mailboxes.find((mailbox) => mailbox.path === item.mailbox)
-                              ?? { path: item.mailbox, name: item.mailbox, delimiter: '/', specialUse: null, totalCount: 0, unreadCount: 0 },
-                            )}</small>
-                          )}
-                        </span>
-                        <span className="thread-snippet">{item.subject || 'Без темы'}</span>
-                      </button>
-                    </li>
-                  );
-                })}
-              </ol>
+        {(threadLoading || ancestors.length > 0) && (
+          <section className="thread-spine" aria-label="Ветка диалога">
+            {threadLoading ? (
+              <p className="thread-spine-loading">Загрузка ветки…</p>
+            ) : (
+              ancestors.map((item, index) => {
+                const last = index === ancestors.length - 1;
+                return (
+                  <button
+                    type="button"
+                    key={`${item.mailbox}:${item.uid}`}
+                    className={last ? 'spine-row last' : 'spine-row'}
+                    onClick={() => onOpenThreadMessage(item)}
+                  >
+                    <span className="spine-rail" aria-hidden>
+                      <span className="spine-line" />
+                      <span className="spine-node hollow" />
+                    </span>
+                    <span className="spine-from">
+                      {item.from.name || item.from.address || 'Без отправителя'}
+                    </span>
+                    <span className="spine-preview">{item.subject || 'Без темы'}</span>
+                    <time className="spine-time">
+                      {new Date(item.date).toLocaleString('ru-RU', {
+                        day: '2-digit',
+                        month: 'short',
+                        hour: '2-digit',
+                        minute: '2-digit',
+                      })}
+                    </time>
+                  </button>
+                );
+              })
             )}
           </section>
         )}
-        <div className="message-header-wrap">
-          {headerVisible && (
-            <>
-              <header className="message-header">
-                <Stack gap="xs">
-                  <Title order={2}>{message.subject || 'Без темы'}</Title>
-                  {(message.tags?.length ?? 0) > 0 && (
-                    <Group gap={6}>
-                      {message.tags.map((tag) => (
-                        <span key={tag} className={`message-tag message-tag--${tag}`}>{tagLabel(tag)}</span>
-                      ))}
-                    </Group>
-                  )}
-                  <div className="sender-details">
-                    <Text fw={600}>{message.from.name || message.from.address}</Text>
-                    <Text size="sm" c="dimmed">{message.from.address}</Text>
-                    <time>{new Date(message.date).toLocaleString('ru-RU')}</time>
-                  </div>
-                </Stack>
-              </header>
-              <div className="message-actions-bar">
-                <Group gap="xs" wrap="wrap">
-            <Button
-              size="xs"
-              variant="light"
-              color="gray"
-              disabled={loading}
-              onClick={() => onReply(message)}
-            >
-              Ответить
-            </Button>
-            <Button
-              size="xs"
-              variant="light"
-              color="gray"
-              disabled={loading}
-              onClick={() => onForward(message)}
-            >
-              Переслать
-            </Button>
-            <Button
-              size="xs"
-              variant="light"
-              color="gray"
-              loading={flaggedPending}
-              disabled={flaggedPending || seenPending}
-              onClick={() => onFlagged(message, !message.flags.includes('\\Flagged'))}
-            >
-              {message.flags.includes('\\Flagged') ? '★ Важное' : '☆ Важное'}
-            </Button>
-            <Button
-              size="xs"
-              variant="light"
-              color="gray"
-              loading={seenPending}
-              disabled={seenPending || flaggedPending}
-              onClick={() => onSeen(message, !isSeen(message))}
-            >
-              {isSeen(message) ? 'Не прочитано' : 'Прочитано'}
-            </Button>
-            {archiveAvailable && <Button size="xs" variant="light" color="gray" disabled={pending} onClick={() => onArchive(message)}>Архив</Button>}
-            <Select
-              size="xs"
-              w={150}
-              placeholder="Переместить…"
-              disabled={pending}
-              data={mailboxes
-                .filter((mailbox) => mailbox.path !== message.mailbox)
-                .map((mailbox) => ({ value: mailbox.path, label: mailboxDisplayName(mailbox) }))}
-              onChange={(destination) => destination && onMove(message, destination)}
-            />
-            <Button size="xs" variant="light" color="red" disabled={pending} onClick={() => onDelete(message, permanent)}>
-              Удалить
-            </Button>
-                </Group>
-              </div>
-            </>
-          )}
-          <button
-            className="message-header-toggle"
-            title={headerVisible ? 'Скрыть шапку' : 'Показать шапку'}
-            onClick={() => setHeaderVisible((v) => !v)}
-          >
-            {headerVisible ? '▲' : '▼ ' + (message.subject || 'Без темы')}
-          </button>
-        </div>
-        <div className="message-body">
-          {loading
-            ? <LoadingState text="Загрузка письма…" />
-            : message.body?.html
-              ? <AutoIframe title={message.subject || 'Письмо'} srcDoc={prepareEmailHtml(message.body.html)} />
-              : <pre>{message.body?.text || 'Пустое письмо'}</pre>}
+
+        <div className="reader-current">
+          <div className="spine-rail current-rail" aria-hidden>
+            <span className="spine-line short" />
+            <span className="spine-node filled" />
+          </div>
+          <div className="reader-current-body">
+            <h1>{message.subject || 'Без темы'}</h1>
+            <div className="reader-meta">
+              <strong>{message.from.name || message.from.address}</strong>
+              <span className="mono">{message.from.address}</span>
+              <time className="mono">{new Date(message.date).toLocaleString('ru-RU')}</time>
+              <span className="reader-account mono">
+                <span className="account-dot" style={{ background: color.accent }} />
+                {accountEmail ?? message.accountId}
+              </span>
+            </div>
+            <div className="message-body">
+              {loading
+                ? <LoadingState text="Загрузка письма…" />
+                : message.body?.html
+                  ? <AutoIframe title={message.subject || 'Письмо'} srcDoc={prepareEmailHtml(message.body.html)} />
+                  : <pre>{message.body?.text || 'Пустое письмо'}</pre>}
+            </div>
+          </div>
         </div>
       </div>
     </article>

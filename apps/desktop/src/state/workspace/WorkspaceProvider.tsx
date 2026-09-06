@@ -1,97 +1,130 @@
 import { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
+import { MESSAGE_TAGS, type MessageTag } from '@letter-box/contracts';
 
-const TABS_KEY = 'letter-box.open-account-tabs';
-const ACTIVE_KEY = 'letter-box.active-tab';
+const SCREEN_KEY = 'letter-box.screen';
+const ACCOUNT_SCOPE_KEY = 'letter-box.account-scope';
 
-export type UnifiedView =
-  | { kind: 'unread' }
-  | { kind: 'tag'; tag: string };
+export type AppScreen =
+  | { kind: 'dashboard' }
+  | { kind: 'all' }
+  | { kind: 'tag'; tag: MessageTag }
+  | { kind: 'unread' };
+
+export type SelectedMessage = {
+  accountId: string;
+  mailbox: string;
+  uid: number;
+} | null;
 
 interface WorkspaceContextValue {
-  active: string;
-  tabs: string[];
-  setActive: (id: string) => void;
-  openAccount: (id: string) => void;
-  openUnified: (view: UnifiedView) => void;
-  closeAccount: (id: string) => void;
-  moveTab: (fromId: string, toId: string) => void;
+  screen: AppScreen;
+  accountScope: string | null;
+  selected: SelectedMessage;
+  tagPaletteOpen: boolean;
+  setScreen: (screen: AppScreen) => void;
+  setAccountScope: (accountId: string | null) => void;
+  cycleAccountScope: (accountIds: string[], direction: 1 | -1) => void;
+  selectMessage: (message: SelectedMessage) => void;
+  clearSelection: () => void;
+  openTagPalette: () => void;
+  closeTagPalette: () => void;
+  openTag: (tag: MessageTag, accountId?: string | null) => void;
+  openUnread: () => void;
+  openAll: () => void;
+  openDashboard: () => void;
   reconcileAccounts: (ids: string[]) => void;
 }
 
 const WorkspaceContext = createContext<WorkspaceContextValue | null>(null);
 
-export function unifiedTabId(view: UnifiedView): string {
-  return view.kind === 'unread' ? 'unified:unread' : `unified:tag:${view.tag}`;
-}
-
-export function parseUnifiedTab(id: string): UnifiedView | null {
-  if (id === 'unified:unread') return { kind: 'unread' };
-  if (id.startsWith('unified:tag:')) {
-    const tag = id.slice('unified:tag:'.length);
-    return tag ? { kind: 'tag', tag } : null;
+function parseScreen(raw: string | null): AppScreen {
+  if (!raw) return { kind: 'dashboard' };
+  try {
+    const parsed = JSON.parse(raw) as AppScreen;
+    if (parsed?.kind === 'dashboard') return { kind: 'dashboard' };
+    if (parsed?.kind === 'all') return { kind: 'all' };
+    if (parsed?.kind === 'unread') return { kind: 'unread' };
+    if (parsed?.kind === 'tag' && MESSAGE_TAGS.includes(parsed.tag)) {
+      return { kind: 'tag', tag: parsed.tag };
+    }
+  } catch {
+    /* ignore */
   }
-  return null;
-}
-
-export function isUnifiedTab(id: string): boolean {
-  return parseUnifiedTab(id) !== null;
+  return { kind: 'dashboard' };
 }
 
 export function WorkspaceProvider({ children }: { children: ReactNode }) {
-  // Cold start: only the dashboard tab. Open mail tabs are session-only.
-  const [tabs, setTabs] = useState<string[]>(() => {
-    localStorage.removeItem(TABS_KEY);
-    return [];
-  });
-  const [active, setActive] = useState('overview');
+  const [screen, setScreenState] = useState<AppScreen>(() => parseScreen(localStorage.getItem(SCREEN_KEY)));
+  const [accountScope, setAccountScopeState] = useState<string | null>(
+    () => localStorage.getItem(ACCOUNT_SCOPE_KEY),
+  );
+  const [selected, setSelected] = useState<SelectedMessage>(null);
+  const [tagPaletteOpen, setTagPaletteOpen] = useState(false);
 
-  useEffect(() => localStorage.setItem(TABS_KEY, JSON.stringify(tabs)), [tabs]);
-  useEffect(() => localStorage.setItem(ACTIVE_KEY, active), [active]);
+  useEffect(() => localStorage.setItem(SCREEN_KEY, JSON.stringify(screen)), [screen]);
+  useEffect(() => {
+    if (accountScope) localStorage.setItem(ACCOUNT_SCOPE_KEY, accountScope);
+    else localStorage.removeItem(ACCOUNT_SCOPE_KEY);
+  }, [accountScope]);
 
   const value = useMemo<WorkspaceContextValue>(() => ({
-    active,
-    tabs,
-    setActive,
-    openAccount: (id) => {
-      setTabs((current) => current.includes(id) ? current : [...current, id]);
-      setActive(id);
+    screen,
+    accountScope,
+    selected,
+    tagPaletteOpen,
+    setScreen: (next) => {
+      setScreenState(next);
+      setSelected(null);
     },
-    openUnified: (view) => {
-      const id = unifiedTabId(view);
-      setTabs((current) => current.includes(id) ? current : [...current, id]);
-      setActive(id);
+    setAccountScope: (accountId) => {
+      setAccountScopeState(accountId);
+      setSelected(null);
     },
-    closeAccount: (id) => {
-      setTabs((current) => current.filter((item) => item !== id));
-      setActive((current) => current === id ? 'overview' : current);
-    },
-    moveTab: (fromId, toId) => {
-      if (fromId === toId) return;
-      setTabs((current) => {
-        const from = current.indexOf(fromId);
-        const to = current.indexOf(toId);
-        if (from < 0 || to < 0) return current;
-        const next = [...current];
-        const [item] = next.splice(from, 1);
-        if (!item) return current;
-        next.splice(to, 0, item);
-        return next;
+    cycleAccountScope: (accountIds, direction) => {
+      if (accountIds.length === 0) return;
+      setAccountScopeState((current) => {
+        if (current === null) {
+          return direction === 1 ? accountIds[0]! : accountIds[accountIds.length - 1]!;
+        }
+        const index = accountIds.indexOf(current);
+        if (index < 0) return accountIds[0]!;
+        const next = index + direction;
+        if (next < 0 || next >= accountIds.length) return null;
+        return accountIds[next]!;
       });
+      setSelected(null);
+    },
+    selectMessage: setSelected,
+    clearSelection: () => setSelected(null),
+    openTagPalette: () => setTagPaletteOpen(true),
+    closeTagPalette: () => setTagPaletteOpen(false),
+    openTag: (tag, accountId) => {
+      setScreenState({ kind: 'tag', tag });
+      if (accountId !== undefined) setAccountScopeState(accountId);
+      setSelected(null);
+      setTagPaletteOpen(false);
+    },
+    openUnread: () => {
+      setScreenState({ kind: 'unread' });
+      setSelected(null);
+    },
+    openAll: () => {
+      setScreenState({ kind: 'all' });
+      setSelected(null);
+    },
+    openDashboard: () => {
+      setScreenState({ kind: 'dashboard' });
+      setSelected(null);
     },
     reconcileAccounts: (ids) => {
       const idSet = new Set(ids);
-      setTabs((current) => {
-        const next = current.filter((id) => isUnifiedTab(id) || idSet.has(id));
-        return next.length === current.length ? current : next;
-      });
-      setActive((current) => (
-        current === 'overview' || isUnifiedTab(current) || idSet.has(current)
-          ? current
-          : 'overview'
+      setAccountScopeState((current) => (current && !idSet.has(current) ? null : current));
+      setSelected((current) => (
+        current && !idSet.has(current.accountId) ? null : current
       ));
     },
-  }), [active, tabs]);
+  }), [screen, accountScope, selected, tagPaletteOpen]);
 
   return <WorkspaceContext.Provider value={value}>{children}</WorkspaceContext.Provider>;
 }

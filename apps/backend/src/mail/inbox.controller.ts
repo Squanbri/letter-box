@@ -20,6 +20,7 @@ export class InboxController {
     @CurrentUser() user: AuthUser,
     @Query('mailbox') mailbox = 'INBOX',
     @Query('tag') tag?: string,
+    @Query('accountId') accountId?: string,
     @Query('unread', new DefaultValuePipe(false), ParseBoolPipe) unread = false,
     @Query('limit', new DefaultValuePipe(50), ParseIntPipe) limit = 50,
     @Query('offset', new DefaultValuePipe(0), ParseIntPipe) offset = 0,
@@ -27,6 +28,7 @@ export class InboxController {
     return this.mail.listInbox(user.id, {
       mailbox,
       tag: tag?.trim() || undefined,
+      accountId: accountId?.trim() || undefined,
       unreadOnly: unread,
       limit,
       offset,

@@ -1,4 +1,5 @@
 import { app, BrowserWindow, ipcMain, shell } from 'electron';
+import { randomUUID } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { installFileLogger } from './logger';
@@ -19,6 +20,59 @@ ipcMain.handle('session:save', (_event, value: unknown) => {
 });
 ipcMain.handle('session:clear', () => clearSession());
 
+function windowFromEvent(event: Electron.IpcMainInvokeEvent): BrowserWindow | null {
+  return BrowserWindow.fromWebContents(event.sender);
+}
+
+ipcMain.handle('window:minimize', (event) => {
+  windowFromEvent(event)?.minimize();
+});
+ipcMain.handle('window:maximize', (event) => {
+  const window = windowFromEvent(event);
+  if (!window) return;
+  if (window.isFullScreen()) window.setFullScreen(false);
+  else if (window.isMaximized()) window.unmaximize();
+  else window.maximize();
+});
+ipcMain.handle('window:close', (event) => {
+  windowFromEvent(event)?.close();
+});
+
+type ComposePayload = {
+  accountId: string;
+  draft: unknown;
+  thread?: unknown;
+  tagHint?: string | null;
+};
+
+const composeDrafts = new Map<string, ComposePayload>();
+const composeWindows = new Map<string, BrowserWindow>();
+
+ipcMain.handle('compose:open', (_event, payload: ComposePayload) => {
+  const id = randomUUID();
+  composeDrafts.set(id, payload);
+  const window = createComposeWindow(id);
+  composeWindows.set(id, window);
+  window.on('closed', () => {
+    composeWindows.delete(id);
+    composeDrafts.delete(id);
+  });
+  return id;
+});
+
+ipcMain.handle('compose:load', (_event, id: unknown) => {
+  if (typeof id !== 'string') return null;
+  return composeDrafts.get(id) ?? null;
+});
+
+ipcMain.handle('compose:close', (_event, id: unknown) => {
+  if (typeof id !== 'string') return;
+  const window = composeWindows.get(id);
+  if (window && !window.isDestroyed()) window.close();
+  composeWindows.delete(id);
+  composeDrafts.delete(id);
+});
+
 let mainWindow: BrowserWindow | null = null;
 
 function resolveAppIcon(): string | undefined {
@@ -29,23 +83,8 @@ function resolveAppIcon(): string | undefined {
   return candidates.find((path) => existsSync(path));
 }
 
-const createWindow = (): BrowserWindow => {
-  const icon = resolveAppIcon();
-  const window = new BrowserWindow({
-    width: 1180,
-    height: 760,
-    minWidth: 820,
-    minHeight: 540,
-    titleBarStyle: 'hiddenInset',
-    backgroundColor: '#f4f4f1',
-    ...(icon ? { icon } : {}),
-    webPreferences: {
-      preload: join(__dirname, 'preload.js'),
-      contextIsolation: true,
-      nodeIntegration: false,
-      sandbox: true,
-    },
-  });
+function attachWindowGuards(window: BrowserWindow): void {
+  window.setWindowButtonVisibility(false);
   window.webContents.setWindowOpenHandler(({ url }) => {
     if (url.startsWith('https://') || url.startsWith('http://')) {
       void shell.openExternal(url);
@@ -58,20 +97,66 @@ const createWindow = (): BrowserWindow => {
   window.webContents.on('render-process-gone', (_event, details) => {
     console.error('Renderer process завершился', details);
   });
+}
+
+const createWindow = (): BrowserWindow => {
+  const icon = resolveAppIcon();
+  const window = new BrowserWindow({
+    width: 1440,
+    height: 900,
+    minWidth: 820,
+    minHeight: 540,
+    titleBarStyle: 'hidden',
+    backgroundColor: '#fbfaf7',
+    ...(icon ? { icon } : {}),
+    webPreferences: {
+      preload: join(__dirname, 'preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true,
+    },
+  });
+  attachWindowGuards(window);
   return window;
 };
 
-async function loadApplication(window: BrowserWindow): Promise<void> {
-  console.info('Загрузка renderer', { packaged: app.isPackaged, apiUrl });
+function createComposeWindow(composeId: string): BrowserWindow {
+  const icon = resolveAppIcon();
+  const window = new BrowserWindow({
+    width: 1120,
+    height: 720,
+    minWidth: 800,
+    minHeight: 520,
+    titleBarStyle: 'hidden',
+    backgroundColor: '#fbfaf7',
+    ...(icon ? { icon } : {}),
+    webPreferences: {
+      preload: join(__dirname, 'preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true,
+    },
+  });
+  attachWindowGuards(window);
+  void loadApplication(window, { compose: composeId });
+  return window;
+}
+
+async function loadApplication(
+  window: BrowserWindow,
+  query: Record<string, string> = {},
+): Promise<void> {
+  const params = new URLSearchParams({ api: apiUrl, ...query });
+  console.info('Загрузка renderer', { packaged: app.isPackaged, apiUrl, query });
   if (app.isPackaged) {
     await window.loadFile(join(__dirname, '../dist/index.html'), {
-      query: { api: apiUrl },
+      query: Object.fromEntries(params.entries()),
     });
   } else {
-    await window.loadURL(
-      `http://127.0.0.1:5173/?api=${encodeURIComponent(apiUrl)}`,
-    );
-    window.webContents.openDevTools({ mode: 'detach' });
+    await window.loadURL(`http://127.0.0.1:5173/?${params.toString()}`);
+    if (!query.compose) {
+      window.webContents.openDevTools({ mode: 'detach' });
+    }
   }
 }
 

@@ -1,14 +1,20 @@
 import { AppProviders } from './app/AppProviders';
 import { AppShell } from './app/AppShell';
-import { DarkModeContext, useDarkModeState } from './app/darkMode';
+import { ComposeWindowApp } from './pages/compose/ComposeWindowApp';
+
+function composeIdFromLocation(): string | null {
+  try {
+    return new URLSearchParams(window.location.search).get('compose');
+  } catch {
+    return null;
+  }
+}
 
 export function App() {
-  const [dark, setDark] = useDarkModeState();
+  const composeId = composeIdFromLocation();
   return (
-    <DarkModeContext.Provider value={{ dark, setDark }}>
-      <AppProviders dark={dark}>
-        <AppShell />
-      </AppProviders>
-    </DarkModeContext.Provider>
+    <AppProviders>
+      {composeId ? <ComposeWindowApp composeId={composeId} /> : <AppShell />}
+    </AppProviders>
   );
 }

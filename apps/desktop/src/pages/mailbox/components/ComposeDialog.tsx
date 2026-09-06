@@ -1,14 +1,7 @@
-import { useEffect, useState } from 'react';
-import {
-  Button,
-  Group,
-  Modal,
-  Stack,
-  Text,
-  Textarea,
-  TextInput,
-} from '@mantine/core';
-import type { Message, SendMessageInput } from '../../../shared/api/client';
+import { useEffect, useMemo, useState } from 'react';
+import { WindowTrafficLights } from '../../../components/window-controls/WindowTrafficLights';
+import type { AccountStatus, Message, SendMessageInput } from '../../../shared/api/client';
+import { accountColor } from '../../../shared/lib/accountColor';
 import { errorMessage } from '../../../shared/lib/format';
 import { useSendMessageMutation } from '../../../state/mail/mail';
 
@@ -23,6 +16,21 @@ export interface ComposeDraft {
   inReplyTo?: string;
   references?: string;
 }
+
+export type ComposeThreadEntry = {
+  id: string;
+  from: string;
+  preview: string;
+  date: string;
+  current?: boolean;
+};
+
+export type ComposeState = {
+  accountId: string;
+  draft: ComposeDraft;
+  thread?: ComposeThreadEntry[];
+  tagHint?: string | null;
+};
 
 export function buildComposeDraft(
   mode: ComposeMode,
@@ -77,30 +85,55 @@ export function buildComposeDraft(
 }
 
 export function ComposeDialog({
-  accountId,
-  fromEmail,
-  opened,
-  draft,
+  accounts,
+  state,
   onClose,
+  onChangeAccount,
   onSent,
+  windowMode = false,
 }: {
-  accountId: string;
-  fromEmail: string;
-  opened: boolean;
-  draft: ComposeDraft;
+  accounts: AccountStatus[];
+  state: ComposeState;
   onClose: () => void;
+  onChangeAccount?: (accountId: string) => void;
   onSent?: () => void;
+  windowMode?: boolean;
 }) {
+  const { accountId, draft, thread, tagHint } = state;
   const [form, setForm] = useState(draft);
   const [showCc, setShowCc] = useState(Boolean(draft.cc));
   const send = useSendMessageMutation(accountId);
+  const fromEmail = accounts.find((account) => account.id === accountId)?.email ?? '';
+  const hasThread = Boolean(thread?.length);
 
   useEffect(() => {
-    if (!opened) return;
     setForm(draft);
     setShowCc(Boolean(draft.cc));
     send.reset();
-  }, [draft, opened]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draft, accountId]);
+
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && !windowMode) {
+        onClose();
+        return;
+      }
+      if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') {
+        event.preventDefault();
+        const input = toSendInput(form);
+        if (!input.to.length || send.isPending) return;
+        send.mutate(input, {
+          onSuccess: () => {
+            onSent?.();
+            onClose();
+          },
+        });
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [form, onClose, onSent, send, windowMode]);
 
   const title = form.mode === 'reply'
     ? 'Ответ'
@@ -108,74 +141,176 @@ export function ComposeDialog({
       ? 'Пересылка'
       : 'Новое письмо';
 
-  return (
-    <Modal
-      opened={opened}
-      onClose={onClose}
-      title={title}
-      centered
-      size="lg"
-    >
-      <form
-        onSubmit={(event) => {
-          event.preventDefault();
-          const input = toSendInput(form);
-          send.mutate(input, {
-            onSuccess: () => {
-              onSent?.();
-              onClose();
-            },
-          });
-        }}
-      >
-        <Stack>
-          <TextInput label="От" value={fromEmail} disabled />
-          <TextInput
-            label="Кому"
+  const accountOptions = useMemo(() => accounts, [accounts]);
+
+  const submit = () => {
+    if (send.isPending) return;
+    const input = toSendInput(form);
+    if (!input.to.length) return;
+    send.mutate(input, {
+      onSuccess: () => {
+        onSent?.();
+        onClose();
+      },
+    });
+  };
+
+  const sheetClass = [
+    'compose-sheet',
+    windowMode ? 'window-mode' : '',
+    hasThread ? 'with-thread' : '',
+  ].filter(Boolean).join(' ');
+
+  const editorBody = (
+    <>
+      {!windowMode && (
+        <header className="compose-sheet-header">
+          <div>
+            <p className="compose-kicker">{title}</p>
+            <h2>{form.subject.trim() || 'Без темы'}</h2>
+          </div>
+          <button type="button" className="compose-icon-btn" onClick={onClose} title="Закрыть · Esc">
+            ✕
+          </button>
+        </header>
+      )}
+
+      <div className="compose-meta">
+        <label className="compose-field">
+          <span>От</span>
+          {accountOptions.length > 1 && onChangeAccount ? (
+            <select
+              value={accountId}
+              onChange={(event) => onChangeAccount(event.currentTarget.value)}
+            >
+              {accountOptions.map((account) => (
+                <option key={account.id} value={account.id}>{account.email}</option>
+              ))}
+            </select>
+          ) : (
+            <div className="compose-from-static">
+              <span
+                className="account-dot"
+                style={{ background: accountColor(accountId).accent }}
+              />
+              {fromEmail}
+            </div>
+          )}
+        </label>
+
+        <label className="compose-field">
+          <span>Кому</span>
+          <input
+            autoFocus
             required
             placeholder="name@example.com"
             value={form.to}
             onChange={(event) => setForm({ ...form, to: event.currentTarget.value })}
           />
-          {showCc ? (
-            <TextInput
-              label="Копия"
+        </label>
+
+        {showCc ? (
+          <label className="compose-field">
+            <span>Копия</span>
+            <input
               placeholder="name@example.com"
               value={form.cc}
               onChange={(event) => setForm({ ...form, cc: event.currentTarget.value })}
             />
-          ) : (
-            <Button
-              variant="subtle"
-              color="gray"
-              size="compact-xs"
-              w="fit-content"
-              onClick={() => setShowCc(true)}
-            >
-              Добавить копию
-            </Button>
-          )}
-          <TextInput
-            label="Тема"
+          </label>
+        ) : (
+          <button type="button" className="compose-link" onClick={() => setShowCc(true)}>
+            + Копия
+          </button>
+        )}
+
+        <label className="compose-field">
+          <span>Тема</span>
+          <input
+            placeholder="Без темы"
             value={form.subject}
             onChange={(event) => setForm({ ...form, subject: event.currentTarget.value })}
           />
-          <Textarea
-            label="Сообщение"
-            minRows={12}
-            autosize
-            maxRows={24}
-            value={form.text}
-            onChange={(event) => setForm({ ...form, text: event.currentTarget.value })}
-          />
-          {send.error && <Text c="red" size="sm">{errorMessage(send.error)}</Text>}
-          <Group justify="flex-end">
-            <Button variant="subtle" color="dark" onClick={onClose}>Отмена</Button>
-            <Button type="submit" loading={send.isPending}>Отправить</Button>
-          </Group>
-        </Stack>
-      </form>
-    </Modal>
+        </label>
+      </div>
+
+      <textarea
+        className="compose-body"
+        placeholder="Текст письма…"
+        value={form.text}
+        onChange={(event) => setForm({ ...form, text: event.currentTarget.value })}
+      />
+
+      <footer className="compose-sheet-footer">
+        <span className="compose-hint">
+          {form.mode === 'new'
+            ? 'Тег назначит Ollama после отправки · ⌘⏎'
+            : 'Отправить ⌘⏎'}
+        </span>
+        <div className="compose-actions">
+          {send.error && <p className="compose-error">{errorMessage(send.error)}</p>}
+          {!windowMode && (
+            <button type="button" className="compose-ghost" onClick={onClose}>Отмена</button>
+          )}
+          <button
+            type="button"
+            className="compose-send"
+            disabled={send.isPending || !form.to.trim()}
+            onClick={submit}
+          >
+            {send.isPending ? 'Отправка…' : 'Отправить'}
+          </button>
+        </div>
+      </footer>
+    </>
+  );
+
+  const sheet = (
+    <section className={sheetClass}>
+      {windowMode && (
+        <header className="compose-window-titlebar">
+          <WindowTrafficLights vertical={false} className="compose-traffic" />
+          <div className="compose-window-title">
+            <p className="compose-kicker">{title}</p>
+            <h2>{form.subject.trim() || 'Без темы'}</h2>
+          </div>
+          <span className="compose-draft-stamp">Черновик</span>
+        </header>
+      )}
+      {hasThread && (
+        <aside className="compose-thread-col">
+          <header>Контекст ветки</header>
+          <div className="compose-thread-list">
+            {thread!.map((entry) => (
+              <div
+                key={entry.id}
+                className={entry.current ? 'compose-thread-item current' : 'compose-thread-item'}
+              >
+                <strong>{entry.from}</strong>
+                <p>{entry.preview}</p>
+                <em>{entry.date}</em>
+                {entry.current && <span>отвечаете на это</span>}
+              </div>
+            ))}
+          </div>
+          <footer>
+            {tagHint ? `Попадёт в тег: ${tagHint}` : 'Тег сохранится у ветки'}
+          </footer>
+        </aside>
+      )}
+      {hasThread ? <div className="compose-editor-col">{editorBody}</div> : editorBody}
+    </section>
+  );
+
+  if (windowMode) {
+    return <div className="compose-window-root">{sheet}</div>;
+  }
+
+  return (
+    <div className="compose-layer" role="dialog" aria-modal="true" aria-label={title}>
+      <button type="button" className="compose-backdrop" aria-label="Закрыть" onClick={onClose} />
+      {sheet}
+    </div>
   );
 }
 
