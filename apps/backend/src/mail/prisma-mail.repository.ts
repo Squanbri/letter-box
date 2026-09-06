@@ -313,7 +313,7 @@ export class PrismaMailRepository {
         SELECT
           COUNT(*)::bigint AS total,
           COUNT(*) FILTER (
-            WHERE classification_status = 'done'
+            WHERE tag_status IN ('tagged', 'completed', 'done')
               OR jsonb_array_length(COALESCE(tags::jsonb, '[]'::jsonb)) > 0
           )::bigint AS classified
         FROM messages
