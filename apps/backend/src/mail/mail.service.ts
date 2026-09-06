@@ -27,6 +27,7 @@ import {
   BACKFILL_BATCH_SIZE,
   BACKFILL_COMPLETE_UID,
 } from '../sync/sync-queue.types';
+import { TaggingQueueService } from '../ai/tagging-queue.service';
 export type { SyncResult } from '@letter-box/contracts';
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -46,6 +47,7 @@ export class MailService {
     @Inject(AccountService) private readonly accounts: AccountService,
     @Optional() @Inject(EventsGateway) private readonly events?: EventsGateway,
     @Optional() @Inject(MailboxFolderLock) private readonly folderLock?: MailboxFolderLock,
+    @Optional() @Inject(TaggingQueueService) private readonly tagging?: TaggingQueueService,
   ) {}
 
   async connect(accountId: string): Promise<{ connected: true }> {
@@ -165,6 +167,12 @@ export class MailService {
     await this.repository.setFolderCursor(accountId, mailbox, {
       backfilledUid: lowest,
     });
+    this.enqueueTags(
+      accountId,
+      mailbox,
+      messages.map((message) => message.uid),
+      'backfill',
+    );
     return {
       done: false,
       loaded: messages.length,
@@ -202,6 +210,26 @@ export class MailService {
     return this.folderLock.withAccountLock(accountId, run);
   }
 
+  private enqueueTags(
+    accountId: string,
+    mailbox: string,
+    uids: number[],
+    source: 'sync' | 'backfill',
+  ): void {
+    if (!this.tagging || uids.length === 0) return;
+    const unique = [...new Set(uids.filter((uid) => Number.isInteger(uid) && uid > 0))];
+    if (unique.length === 0) return;
+    void this.tagging.enqueueMany(accountId, mailbox, unique, source).catch((error) => {
+      console.error('[tagging] enqueue failed', {
+        accountId,
+        mailbox,
+        source,
+        count: unique.length,
+        error: error instanceof Error ? error.message : error,
+      });
+    });
+  }
+
   private async performSync(accountId: string, mailbox: string): Promise<SyncResult> {
     await this.accounts.get(accountId);
     await this.accounts.setStatus(accountId, 'syncing');
@@ -232,6 +260,15 @@ export class MailService {
 
       const removed = await this.repository.applyChanges(accountId, mailbox, result);
       await this.accounts.markSynced(accountId);
+      this.enqueueTags(
+        accountId,
+        mailbox,
+        [
+          ...result.messages.map((message) => message.uid),
+          ...result.classificationPreparations.map((item) => item.uid),
+        ],
+        'sync',
+      );
       const syncResult = {
         synced: result.messages.length + result.flagUpdates.length,
         added: result.messages.length,
@@ -409,6 +446,12 @@ export class MailService {
       50,
     );
     await this.repository.saveMessages(accountId, mailbox, messages);
+    this.enqueueTags(
+      accountId,
+      mailbox,
+      messages.map((message) => message.uid),
+      'backfill',
+    );
     return { loaded: messages.length };
   }
 

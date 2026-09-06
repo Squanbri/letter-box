@@ -113,8 +113,66 @@ export function buildClassificationPrompt(input: {
     '- If unsure about other tags, use other.',
     `From: ${input.from || 'unknown'}`,
     `Subject: ${input.subject || '(no subject)'}`,
-    `Body: ${input.text.slice(0, 1200)}`,
+    'Body:',
+    input.text,
   ].join('\n');
+}
+
+/**
+ * Keep top-level quoted reply context; collapse deeper quote nests (>1 `>` level)
+ * and nested "original message" blocks into a short marker.
+ */
+export function collapseQuotedHistory(text: string): string {
+  const lines = text.replace(/\r\n/g, '\n').split('\n');
+  const output: string[] = [];
+  let replyHeaderDepth = 0;
+  let deepRun = 0;
+
+  for (const line of lines) {
+    if (isReplyHeader(line)) {
+      replyHeaderDepth += 1;
+      if (replyHeaderDepth > 1) {
+        if (deepRun === 0) {
+          output.push('[…] deeper quoted history collapsed');
+        }
+        deepRun += 1;
+        continue;
+      }
+      deepRun = 0;
+      output.push(line);
+      continue;
+    }
+
+    const depth = quoteMarkerDepth(line) + Math.max(0, replyHeaderDepth - 1);
+    if (depth >= 2) {
+      if (deepRun === 0) {
+        output.push('[…] deeper quoted history collapsed');
+      }
+      deepRun += 1;
+      continue;
+    }
+    deepRun = 0;
+    output.push(line);
+  }
+
+  return output.join('\n').replace(/\n{3,}/g, '\n\n').trim();
+}
+
+function quoteMarkerDepth(line: string): number {
+  const match = line.match(/^[ \t]*(?:>[ \t]*)+/);
+  if (!match) return 0;
+  return match[0].split('>').length - 1;
+}
+
+function isReplyHeader(line: string): boolean {
+  const trimmed = line.trim();
+  return (
+    /^on .+ wrote:\s*$/i.test(trimmed)
+    || /^.+ написал[аи]?:\s*$/i.test(trimmed)
+    || /^-{2,}\s*original message\s*-{2,}\s*$/i.test(trimmed)
+    || /^-{2,}\s*исходное сообщение\s*-{2,}\s*$/i.test(trimmed)
+    || /^-{2,}\s*forwarded message\s*-{2,}\s*$/i.test(trimmed)
+  );
 }
 
 function extractJsonArray(value: string): unknown[] | null {

@@ -92,7 +92,7 @@ model Message {
   bodyLoadedAt         DateTime? @map("body_loaded_at") @db.Timestamptz
   classificationText   String?   @map("classification_text")
   /// Domain name: tagStatus. Values: pending | processing | tagged | failed
-  /// ("completed" still written by current classification until queue cutover).
+  /// ("completed" may still exist on legacy rows until heuristics/sweep normalize them).
   classificationStatus String    @default("pending") @map("tag_status")
   tagAttempts          Int       @default(0) @map("tag_attempts")
   classifiedAt         DateTime? @map("tagged_at") @db.Timestamptz

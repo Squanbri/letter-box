@@ -35,6 +35,7 @@ import { TokenRefreshQueueService } from './sync/token-refresh-queue.service';
 import { PrismaDatabaseService } from './database/prisma-database.service';
 import { OllamaService } from './ai/ollama.service';
 import { ClassificationService } from './ai/classification.service';
+import { TaggingQueueService } from './ai/tagging-queue.service';
 
 @Module({
   imports: [
@@ -102,6 +103,7 @@ import { ClassificationService } from './ai/classification.service';
     TokenRefreshQueueService,
     OllamaService,
     ClassificationService,
+    TaggingQueueService,
   ],
 })
 export class AppModule {}
