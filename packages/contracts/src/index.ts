@@ -297,6 +297,8 @@ export interface DashboardStats {
   tagAccountMatrix: TagAccountCount[];
   awaitingReply: AwaitingReplyItem[];
   classifiedCount: number;
+  pendingCount: number;
+  failedCount: number;
   totalCount: number;
 }
 

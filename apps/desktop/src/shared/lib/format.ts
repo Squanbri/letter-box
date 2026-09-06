@@ -24,6 +24,18 @@ export function statusName(status: AccountStatus['status']) {
           : 'Не проверен';
 }
 
+/** Short status line for dashboard — avoid implying wrong password for transient IMAP drops. */
+export function accountErrorHint(lastError: string) {
+  if (/повторн|авториз|oauth|credential|парол|AUTHENTICATIONFAILED|invalid credentials/i.test(lastError)) {
+    return 'нужен повторный вход';
+  }
+  if (/Connection not available|ECONN|ETIMEDOUT|socket|TLS|SSL|connect/i.test(lastError)) {
+    return 'сбой соединения, повторим';
+  }
+  const trimmed = lastError.replace(/^Ошибка IMAP:\s*/i, '').trim();
+  return trimmed.length > 48 ? `${trimmed.slice(0, 45)}…` : trimmed || 'ошибка синхронизации';
+}
+
 export function errorMessage(reason: unknown) {
   return reason instanceof Error ? reason.message : 'Произошла неизвестная ошибка';
 }

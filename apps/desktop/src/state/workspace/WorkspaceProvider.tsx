@@ -101,20 +101,24 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     closeTagPalette: () => setTagPaletteOpen(false),
     openTag: (tag, accountId) => {
       setScreenState({ kind: 'tag', tag });
-      if (accountId !== undefined) setAccountScopeState(accountId);
+      // Rail clicks omit accountId → reset scope; dashboard/palette may pass an id or null.
+      setAccountScopeState(accountId !== undefined ? accountId : null);
       setSelected(null);
       setTagPaletteOpen(false);
     },
     openUnread: () => {
       setScreenState({ kind: 'unread' });
+      setAccountScopeState(null);
       setSelected(null);
     },
     openAll: () => {
       setScreenState({ kind: 'all' });
+      setAccountScopeState(null);
       setSelected(null);
     },
     openDashboard: () => {
       setScreenState({ kind: 'dashboard' });
+      setAccountScopeState(null);
       setSelected(null);
     },
     reconcileAccounts: (ids) => {

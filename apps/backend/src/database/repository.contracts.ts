@@ -126,7 +126,7 @@ export interface MailRepositoryContract {
   messageTotals(
     accountIds: string[],
     mailbox: string,
-  ): Promise<{ total: number; classified: number }>;
+  ): Promise<{ total: number; classified: number; pending: number; failed: number }>;
   classificationCandidateUids(accountId: string, mailbox: string): Promise<number[]>;
   saveClassificationPreparations(
     accountId: string,

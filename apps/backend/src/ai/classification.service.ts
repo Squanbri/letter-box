@@ -35,6 +35,10 @@ export class ClassificationService {
    */
   async tagMessage(job: TagMessageJobData): Promise<TagMessageJobResult> {
     if (!this.ollama.enabled) return { status: 'skipped' };
+    if (!(await this.ollama.healthy())) {
+      // Do not burn attempts while the model server is down.
+      throw new Error(`Ollama недоступен (${this.ollama.baseUrl})`);
+    }
 
     const row = await this.database.client.message.findUnique({
       where: {
@@ -104,6 +108,12 @@ export class ClassificationService {
       this.logger.warn(
         `Tagging failed for ${row.accountId}/${row.mailbox}/${row.uid}: ${message}`,
       );
+      const transient = isTransientOllamaError(message);
+      if (transient) {
+        // Undo the attempt so outages do not permanently park mail as failed.
+        await this.release(row, { decrementAttempt: true });
+        throw error;
+      }
       const attempts = await this.currentAttempts(row);
       if (attempts >= tagMaxAttempts()) {
         await this.markFailed(row);
@@ -116,13 +126,20 @@ export class ClassificationService {
   }
 
   /** Safety-net: enqueue pending messages that never got a tag job. */
-  async enqueuePendingSweep(limit = 100): Promise<number> {
+  async enqueuePendingSweep(limit = 200): Promise<number> {
     if (!this.tagging || !this.ollama.enabled) return 0;
+    if (!(await this.ollama.healthy())) {
+      this.logger.warn('Sweep skipped: Ollama недоступен');
+      return 0;
+    }
+    const recovered = await this.requeueFailed(limit);
+    if (recovered > 0) {
+      this.logger.log(`Recovered ${recovered} failed message(s) for re-tagging`);
+    }
     // Recover jobs stuck in processing after a worker crash.
     await this.database.client.message.updateMany({
       where: {
         classificationStatus: 'processing',
-        tagAttempts: { lt: tagMaxAttempts() },
       },
       data: { classificationStatus: 'pending' },
     });
@@ -146,6 +163,36 @@ export class ClassificationService {
       if (result.queued) enqueued += 1;
     }
     return enqueued;
+  }
+
+  /** Move failed rows back to pending once Ollama is healthy again. */
+  async requeueFailed(limit = 500): Promise<number> {
+    const rows = await this.database.client.message.findMany({
+      where: { classificationStatus: 'failed' },
+      orderBy: [{ receivedAt: 'desc' }, { uid: 'desc' }],
+      take: limit,
+      select: { accountId: true, mailbox: true, uid: true },
+    });
+    if (rows.length === 0) return 0;
+    let updated = 0;
+    for (const row of rows) {
+      const result = await this.database.client.message.updateMany({
+        where: {
+          accountId: row.accountId,
+          mailbox: row.mailbox,
+          uid: row.uid,
+          classificationStatus: 'failed',
+        },
+        data: {
+          classificationStatus: 'pending',
+          tagAttempts: 0,
+          tags: [],
+          classifiedAt: null,
+        },
+      });
+      updated += result.count;
+    }
+    return updated;
   }
 
   /** Fast pass: bump important on already-tagged mail via heuristics (no Ollama). */
@@ -274,11 +321,14 @@ export class ClassificationService {
     });
   }
 
-  private release(candidate: {
-    accountId: string;
-    mailbox: string;
-    uid: bigint;
-  }): Promise<unknown> {
+  private release(
+    candidate: {
+      accountId: string;
+      mailbox: string;
+      uid: bigint;
+    },
+    options: { decrementAttempt?: boolean } = {},
+  ): Promise<unknown> {
     return this.database.client.message.updateMany({
       where: {
         accountId: candidate.accountId,
@@ -286,7 +336,12 @@ export class ClassificationService {
         uid: candidate.uid,
         classificationStatus: 'processing',
       },
-      data: { classificationStatus: 'pending' },
+      data: {
+        classificationStatus: 'pending',
+        ...(options.decrementAttempt
+          ? { tagAttempts: { decrement: 1 } }
+          : {}),
+      },
     });
   }
 
@@ -302,10 +357,15 @@ export class ClassificationService {
         uid: candidate.uid,
       },
       data: {
-        tags: ['other'],
+        tags: [],
         classificationStatus: 'failed',
         classifiedAt: new Date(),
       },
     });
   }
+}
+
+function isTransientOllamaError(message: string): boolean {
+  return /fetch failed|ECONNREFUSED|ECONNRESET|ETIMEDOUT|aborted|Ollama недоступен|Ollama 5\d\d/i
+    .test(message);
 }

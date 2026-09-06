@@ -21,6 +21,7 @@ import { useDashboardStatsQuery } from '../state/mail/mail';
 import { useSync } from '../state/sync/SyncProvider';
 import { useWorkspace } from '../state/workspace/WorkspaceProvider';
 import { openComposeWindow } from '../shared/lib/composeWindow';
+import { BrandLogo } from '../shared/ui/BrandLogo';
 
 const EMPTY_ACCOUNTS: AccountStatus[] = [];
 
@@ -171,6 +172,10 @@ export function AppShell() {
       </header>
 
       <aside className="app-rail" aria-label="Навигация">
+        <div className="rail-brand" title="Letter Box">
+          <BrandLogo size={30} />
+        </div>
+
         <div className="rail-group">
           <button
             type="button"

@@ -1,8 +1,10 @@
 import { useEffect, useState, type FormEvent } from 'react';
+import { Checkbox } from '@mantine/core';
 import { useQueryClient } from '@tanstack/react-query';
 import { OAUTH_PROVIDERS, type BasicAccountInput, type MailProvider } from '@letter-box/contracts';
 import type { AccountStatus } from '../../shared/api/client';
 import { errorMessage } from '../../shared/lib/format';
+import { BrandLogo } from '../../shared/ui/BrandLogo';
 import { accountKeys, useSaveBasicAccountMutation } from '../../state/accounts/accounts';
 
 type Step = 'picker' | 'waiting' | 'yandex-code' | 'imap' | 'success';
@@ -156,7 +158,10 @@ export function AccountDialog({
       <button type="button" className="compose-backdrop" aria-label="Закрыть" onClick={close} />
       <section className="account-sheet">
         <aside className="account-hero">
-          <p className="account-kicker">Letter Box</p>
+          <div className="account-brand">
+            <BrandLogo size={36} />
+            <p className="account-kicker">Letter Box</p>
+          </div>
           <h2>Почта остаётся у вас</h2>
           <ul>
             <li>Gmail — OAuth в системном браузере</li>
@@ -379,14 +384,12 @@ export function AccountDialog({
                       </div>
                     </label>
                   </div>
-                  <label className="account-ssl">
-                    <input
-                      type="checkbox"
-                      checked={form.useSSL !== false}
-                      onChange={(event) => setForm({ ...form, useSSL: event.currentTarget.checked })}
-                    />
-                    SSL / STARTTLS
-                  </label>
+                  <Checkbox
+                    className="account-ssl"
+                    label="SSL / STARTTLS"
+                    checked={form.useSSL !== false}
+                    onChange={(event) => setForm({ ...form, useSSL: event.currentTarget.checked })}
+                  />
                 </>
               )}
               {saveBasic.isPending && (

@@ -45,6 +45,12 @@ export function MailSectionPage({
   const [error, setError] = useState<string | null>(null);
   const [markingRead, setMarkingRead] = useState(false);
 
+  const unscopedInboxQuery = useInboxQuery({
+    unread: mode.kind === 'unread' ? true : undefined,
+    tag: mode.kind === 'tag' ? mode.tag : null,
+    accountId: null,
+  });
+
   const inboxQuery = useInboxQuery({
     unread: mode.kind === 'unread' ? true : undefined,
     tag: mode.kind === 'tag' ? mode.tag : null,
@@ -65,12 +71,20 @@ export function MailSectionPage({
   );
 
   const scopeCounts = useMemo(() => {
+    const source = workspace.accountScope
+      ? unscopedInboxQuery.data?.pages.flat() ?? []
+      : messages;
     const counts = new Map<string, number>();
-    for (const message of messages) {
+    for (const message of source) {
       counts.set(message.accountId, (counts.get(message.accountId) ?? 0) + 1);
     }
     return counts;
-  }, [messages]);
+  }, [messages, unscopedInboxQuery.data, workspace.accountScope]);
+
+  const unscopedTotal = useMemo(() => {
+    if (!workspace.accountScope) return messages.length;
+    return unscopedInboxQuery.data?.pages.flat().length ?? messages.length;
+  }, [messages.length, unscopedInboxQuery.data, workspace.accountScope]);
 
   const selected = workspace.selected;
   const selectedAccount = selected ? accountById.get(selected.accountId) ?? null : null;
@@ -165,7 +179,7 @@ export function MailSectionPage({
             onClick={() => workspace.setAccountScope(null)}
           >
             Все аккаунты
-            <em>{messages.length}</em>
+            <em>{unscopedTotal}</em>
           </button>
           {accounts.map((account) => {
             const color = accountColor(account.id);

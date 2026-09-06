@@ -27,9 +27,9 @@ function AutoIframe({ srcDoc, title }: { srcDoc: string; title: string }) {
     <iframe
       ref={ref}
       title={title}
-      sandbox="allow-popups allow-popups-to-escape-sandbox"
+      sandbox="allow-popups allow-popups-to-escape-sandbox allow-same-origin"
       srcDoc={srcDoc}
-      style={{ width: '100%', border: 0, display: 'block', background: 'transparent' }}
+      style={{ width: '100%', border: 0, display: 'block', background: 'transparent', minHeight: '100%' }}
     />
   );
 }

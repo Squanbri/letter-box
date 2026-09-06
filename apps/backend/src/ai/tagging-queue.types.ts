@@ -8,10 +8,10 @@ export const TAG_PRIORITY_SWEEP = 5;
 export const TAG_PRIORITY_BACKFILL = 10;
 
 export const TAG_MAX_ATTEMPTS = 3;
-/** Soft cap after quote collapse — not the old 1.2–1.5k aggressive trim. */
+  /** Soft cap after quote collapse — not the old 1.2–1.5k aggressive trim. */
 export const TAG_BODY_SOFT_LIMIT = 12_000;
-/** Safety-net sweep interval (default 3 minutes). */
-export const TAG_SWEEP_INTERVAL_MS = 180_000;
+/** Safety-net sweep interval (default 60 seconds while catching up). */
+export const TAG_SWEEP_INTERVAL_MS = 60_000;
 
 export type TagMessageSource = 'sync' | 'backfill' | 'sweep';
 

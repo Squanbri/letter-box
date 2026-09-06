@@ -52,11 +52,11 @@ services:
       JWT_SECRET: ${JWT_SECRET:-development-jwt-secret-change-before-production}
       SYNC_WORKER_CONCURRENCY: ${SYNC_WORKER_CONCURRENCY:-4}
       LETTER_BOX_PROCESS_ROLE: worker
-      # Host Ollama from Docker Desktop / Linux bridge
-      OLLAMA_URL: http://host.docker.internal:11434
+      # Prefer in-compose Ollama; override with host.docker.internal for native macOS Metal.
+      OLLAMA_URL: ${OLLAMA_URL:-http://ollama:11434}
       OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen2.5:7b}
       OLLAMA_ENABLED: ${OLLAMA_ENABLED:-true}
-      TAG_SWEEP_INTERVAL_MS: ${TAG_SWEEP_INTERVAL_MS:-180000}
+      TAG_SWEEP_INTERVAL_MS: ${TAG_SWEEP_INTERVAL_MS:-60000}
       TAG_MAX_ATTEMPTS: ${TAG_MAX_ATTEMPTS:-3}
       OAUTH_GMAIL_CLIENT_ID: ${OAUTH_GMAIL_CLIENT_ID:-}
       OAUTH_GMAIL_CLIENT_SECRET: ${OAUTH_GMAIL_CLIENT_SECRET:-}
@@ -71,6 +71,24 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+    restart: unless-stopped
+
+  # Optional: docker compose --profile ai up -d
+  # On macOS Docker this is CPU-only (no Metal). Prefer native Ollama.app for speed,
+  # and set OLLAMA_URL=http://host.docker.internal:11434 for the worker.
+  ollama:
+    profiles: ["ai"]
+    image: ollama/ollama:latest
+    ports:
+      - "11434:11434"
+    volumes:
+      - letter_box_ollama:/root/.ollama
+    healthcheck:
+      test: ["CMD-SHELL", "ollama list >/dev/null || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 20s
     restart: unless-stopped
 
   postgres:
@@ -105,3 +123,4 @@ volumes:
   letter_box_server:
   letter_box_postgres:
   letter_box_redis:
+  letter_box_ollama:

@@ -411,6 +411,8 @@ export class MailService {
       tagAccountMatrix,
       awaitingReply,
       classifiedCount: totalsRow.classified,
+      pendingCount: totalsRow.pending,
+      failedCount: totalsRow.failed,
       totalCount: totalsRow.total,
     };
   }

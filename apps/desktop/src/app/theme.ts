@@ -106,5 +106,65 @@ export const theme = createTheme({
         label: { color: 'var(--text-primary)', fontSize: '13px' },
       },
     },
+    Switch: {
+      defaultProps: {
+        color: 'brand',
+        size: 'sm',
+      },
+      styles: {
+        root: {
+          '--switch-width': '36px',
+          '--switch-height': '20px',
+          '--switch-thumb-size': '16px',
+        },
+        track: {
+          cursor: 'pointer',
+          border: '1px solid var(--border-input)',
+          background: 'var(--chip)',
+          transition: 'background 120ms ease, border-color 120ms ease',
+        },
+        thumb: {
+          border: '1px solid color-mix(in srgb, var(--border-strong) 70%, transparent)',
+          boxShadow: '0 1px 2px rgb(23 21 15 / 10%)',
+        },
+        label: {
+          color: 'var(--ink-body)',
+          fontSize: '13px',
+          fontWeight: 500,
+          paddingLeft: '8px',
+          lineHeight: 1.35,
+          cursor: 'pointer',
+        },
+      },
+    },
+    Checkbox: {
+      defaultProps: {
+        color: 'brand',
+        size: 'sm',
+        radius: 'sm',
+      },
+      styles: {
+        root: {
+          alignItems: 'flex-start',
+        },
+        input: {
+          cursor: 'pointer',
+          border: '1.5px solid var(--border-input)',
+          background: 'var(--surface)',
+          transition: 'background 120ms ease, border-color 120ms ease',
+        },
+        icon: {
+          color: '#fff',
+        },
+        label: {
+          color: 'var(--ink-body)',
+          fontSize: '13px',
+          fontWeight: 500,
+          paddingLeft: '8px',
+          lineHeight: 1.4,
+          cursor: 'pointer',
+        },
+      },
+    },
   },
 });
