@@ -6,7 +6,10 @@ export function tagLabel(tag: string) {
 }
 
 export function providerName(provider: AccountStatus['provider']) {
-  return provider === 'mailru' ? 'Mail.ru' : provider === 'yandex' ? 'Яндекс' : 'Gmail';
+  if (provider === 'mailru') return 'Mail.ru';
+  if (provider === 'yandex') return 'Яндекс';
+  if (provider === 'gmail') return 'Gmail';
+  return 'IMAP';
 }
 
 export function statusName(status: AccountStatus['status']) {
@@ -14,9 +17,11 @@ export function statusName(status: AccountStatus['status']) {
     ? 'Подключён'
     : status === 'syncing'
       ? 'Синхронизация…'
-      : status === 'error'
-        ? 'Требует внимания'
-        : 'Не проверен';
+      : status === 'needs_reauth'
+        ? 'Нужна повторная авторизация'
+        : status === 'error'
+          ? 'Требует внимания'
+          : 'Не проверен';
 }
 
 export function errorMessage(reason: unknown) {

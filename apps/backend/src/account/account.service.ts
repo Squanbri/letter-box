@@ -6,16 +6,19 @@ import {
   OnModuleInit,
 } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
+import {
+  OAUTH_PROVIDERS,
+  type AccountInput,
+  type AccountStatus as ContractAccountStatus,
+  type BasicAccountInput,
+  type OAuthAccountInput,
+} from '@letter-box/contracts';
 import { AccountConfig, getRuntimeOptions } from '../runtime';
 import type { AccountRow } from './account.types';
 import {
   ACCOUNT_REPOSITORY,
   AccountRepositoryContract,
 } from '../database/repository.contracts';
-import type {
-  AccountInput,
-  AccountStatus as ContractAccountStatus,
-} from '@letter-box/contracts';
 
 export type SaveAccountInput = AccountInput;
 export type AccountStatus = ContractAccountStatus;
@@ -57,6 +60,10 @@ export class AccountService implements OnModuleInit {
     return account;
   }
 
+  listConfigs(): AccountConfig[] {
+    return [...this.credentials.values()];
+  }
+
   async reloadCredential(accountId: string): Promise<void> {
     const stored = await getRuntimeOptions().credentialStore?.loadAll() ?? [];
     const account = stored.find((candidate) => candidate.id === accountId);
@@ -68,28 +75,22 @@ export class AccountService implements OnModuleInit {
   }
 
   prepare(input: SaveAccountInput, id: string = randomUUID()): AccountConfig {
-    const email = input.email.trim().toLowerCase();
-    const password = input.provider === 'gmail'
-      ? input.password.replace(/\s+/g, '')
-      : input.password.trim();
-    if (!email || !password) throw new BadRequestException('Укажите email и пароль приложения');
-    const servers = {
-      mailru: { host: 'imap.mail.ru', port: 993, secure: true },
-      yandex: { host: 'imap.yandex.ru', port: 993, secure: true },
-      gmail: { host: 'imap.gmail.com', port: 993, secure: true },
-    } as const;
-    const server = servers[input.provider];
-    if (!server) throw new BadRequestException('Неподдерживаемый почтовый сервис');
-    return { id, ...server, provider: input.provider, email, password };
+    return isOAuthInput(input)
+      ? this.prepareOAuth(input, id)
+      : this.prepareBasic(input, id);
   }
 
   use(account: AccountConfig): void {
     this.credentials.set(account.id, account);
   }
 
-  async persist(account: AccountConfig, userId: string | null = null): Promise<void> {
+  async persistCredentials(account: AccountConfig): Promise<void> {
     await getRuntimeOptions().credentialStore?.save(account);
     this.credentials.set(account.id, account);
+  }
+
+  async persist(account: AccountConfig, userId: string | null = null): Promise<void> {
+    await this.persistCredentials(account);
     const now = new Date().toISOString();
     await this.repository.saveConnected(account, userId, now);
   }
@@ -118,6 +119,96 @@ export class AccountService implements OnModuleInit {
     await this.repository.clearMailData(accountId);
   }
 
+  private prepareOAuth(input: OAuthAccountInput, id: string): AccountConfig {
+    const email = input.email.trim().toLowerCase();
+    if (!email || !input.accessToken || !input.refreshToken) {
+      throw new BadRequestException('OAuth-ответ неполный: нет email или токенов');
+    }
+    const provider = OAUTH_PROVIDERS[input.provider];
+    if (!provider || provider.authMode === 'basic') {
+      throw new BadRequestException('Этот провайдер подключается без OAuth');
+    }
+    return {
+      id,
+      provider: input.provider,
+      email,
+      authType: 'oauth',
+      accessToken: input.accessToken,
+      refreshToken: input.refreshToken,
+      expiresAt: input.expiresAt,
+      host: provider.imapHost,
+      port: provider.imapPort,
+      secure: true,
+      smtpHost: provider.smtpHost,
+      smtpPort: provider.smtpPort,
+      smtpSecure: provider.smtpSecure,
+    };
+  }
+
+  private prepareBasic(input: BasicAccountInput, id: string): AccountConfig {
+    const email = input.email.trim().toLowerCase();
+    const password = input.provider === 'gmail'
+      ? input.password.replace(/\s+/g, '')
+      : input.password.trim();
+    if (!email || !password) {
+      throw new BadRequestException('Укажите email и пароль приложения');
+    }
+    const servers = this.basicServers(input);
+    return {
+      id,
+      provider: servers.provider,
+      email,
+      authType: 'basic',
+      password,
+      host: servers.host,
+      port: servers.port,
+      secure: servers.secure,
+      smtpHost: servers.smtpHost,
+      smtpPort: servers.smtpPort,
+      smtpSecure: servers.smtpSecure,
+    };
+  }
+
+  private basicServers(input: BasicAccountInput): {
+    provider: AccountConfig['provider'];
+    host: string;
+    port: number;
+    secure: boolean;
+    smtpHost: string;
+    smtpPort: number;
+    smtpSecure: boolean;
+  } {
+    if (input.provider === 'imap') {
+      const host = input.imapHost?.trim();
+      const smtpHost = input.smtpHost?.trim();
+      if (!host || !smtpHost) {
+        throw new BadRequestException('Для IMAP укажите хосты IMAP и SMTP');
+      }
+      const imapPort = input.imapPort ?? (input.useSSL === false ? 143 : 993);
+      const smtpPort = input.smtpPort ?? 587;
+      return {
+        provider: 'imap',
+        host,
+        port: imapPort,
+        secure: input.useSSL !== false && imapPort !== 143,
+        smtpHost,
+        smtpPort,
+        smtpSecure: smtpPort === 465,
+      };
+    }
+    const provider = input.provider;
+    const defaults = OAUTH_PROVIDERS[provider];
+    return {
+      provider,
+      host: defaults.imapHost,
+      port: defaults.imapPort,
+      secure: true,
+      smtpHost: defaults.smtpHost,
+      smtpPort: defaults.smtpPort,
+      smtpSecure: defaults.smtpSecure,
+    };
+  }
+
   private mapStatus(row: AccountRow): AccountStatus {
     return {
       id: row.id, provider: row.provider, email: row.email, status: row.status,
@@ -125,4 +216,8 @@ export class AccountService implements OnModuleInit {
       unreadCount: row.unread_count,
     };
   }
+}
+
+export function isOAuthInput(input: AccountInput): input is OAuthAccountInput {
+  return input.authType === 'oauth';
 }

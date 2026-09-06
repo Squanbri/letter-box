@@ -10,10 +10,14 @@ const account: AccountConfig = {
   id: 'account-1',
   provider: 'mailru',
   email: 'user@example.com',
+  authType: 'basic',
   password: 'application-password',
   host: 'imap.mail.ru',
   port: 993,
   secure: true,
+  smtpHost: 'smtp.mail.ru',
+  smtpPort: 587,
+  smtpSecure: false,
 };
 
 test('encrypts, reloads, updates, and deletes server credentials', async () => {
@@ -22,7 +26,8 @@ test('encrypts, reloads, updates, and deletes server credentials', async () => {
   try {
     const store = new FileCredentialStore(path, 'test-encryption-key');
     await store.save(account);
-    assert.equal(readFileSync(path, 'utf8').includes(account.password), false);
+    const raw = readFileSync(path, 'utf8');
+    assert.equal(raw.includes(account.password ?? ''), false);
     assert.deepEqual(await store.loadAll(), [account]);
 
     await store.save({ ...account, password: 'new-password' });
@@ -30,6 +35,29 @@ test('encrypts, reloads, updates, and deletes server credentials', async () => {
 
     await store.delete(account.id);
     assert.deepEqual(await store.loadAll(), []);
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test('encrypts oauth tokens without storing them in plaintext', async () => {
+  const directory = mkdtempSync(join(tmpdir(), 'letter-box-oauth-credentials-'));
+  const path = join(directory, 'credentials.json');
+  const { password: _unused, ...withoutPassword } = account;
+  const oauth: AccountConfig = {
+    ...withoutPassword,
+    authType: 'oauth',
+    accessToken: 'ya29.access',
+    refreshToken: '1//refresh',
+    expiresAt: 1_700_000_000_000,
+  };
+  try {
+    const store = new FileCredentialStore(path, 'test-encryption-key');
+    await store.save(oauth);
+    const raw = readFileSync(path, 'utf8');
+    assert.equal(raw.includes('ya29.access'), false);
+    assert.equal(raw.includes('1//refresh'), false);
+    assert.deepEqual(await store.loadAll(), [oauth]);
   } finally {
     rmSync(directory, { recursive: true, force: true });
   }

@@ -1988,6 +1988,62 @@ button {
   padding-top: 8px;
 }
 
+.account-provider-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.account-provider-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  min-height: 84px;
+  padding: 14px 16px;
+  border: 1px solid var(--border-card);
+  border-radius: 10px;
+  background: var(--surface);
+  text-align: left;
+  cursor: pointer;
+}
+
+.account-provider-tile:hover {
+  border-color: var(--accent);
+}
+
+.account-provider-tile strong {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.account-provider-tile span {
+  color: var(--ink-muted);
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+
+.account-host-grid {
+  display: grid;
+  grid-template-columns: 1fr 88px;
+  gap: 10px;
+}
+
+.account-ssl {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--ink-2);
+}
+
+.account-form form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  flex: 1;
+}
+
 
 /* Window traffic lights (custom vertical) */
 .traffic-lights {

@@ -300,12 +300,12 @@ export function DashboardPage({
                 <h2>Аккаунты</h2>
                 <p>{connected}/{accounts.length} подключено</p>
               </div>
-              <button type="button" className="text-btn" onClick={onAdd}>Добавить</button>
+              <button type="button" className="text-btn" onClick={onAdd}>+ Добавить почту</button>
             </header>
             {accounts.length === 0 ? (
               <div className="empty-accounts">
-                <p>Подключите Mail.ru, Яндекс или Gmail</p>
-                <button type="button" className="compose-send" onClick={onAdd}>Добавить аккаунт</button>
+                <p>Подключите Gmail, Яндекс, Mail.ru или другой IMAP</p>
+                <button type="button" className="compose-send" onClick={onAdd}>+ Добавить почту</button>
               </div>
             ) : (
               <ul className="account-rows">
@@ -326,8 +326,10 @@ export function DashboardPage({
                         <span>
                           <strong>{account.email}</strong>
                           <small>
-                            {account.status === 'error' && account.lastError
-                              ? 'нужен пароль'
+                            {account.status === 'needs_reauth'
+                              ? 'нужна повторная авторизация'
+                              : account.status === 'error' && account.lastError
+                              ? 'нужен повторный вход'
                               : syncingIds.has(account.id)
                                 ? 'синхр. сейчас'
                                 : statusName(account.status).toLowerCase()}
@@ -345,7 +347,7 @@ export function DashboardPage({
                           onChange={(event) => setAccountSync(account.id, event.currentTarget.checked)}
                           title="Авто-синхронизация"
                         />
-                        {(account.status === 'error' || account.status === 'disconnected') && (
+                        {(account.status === 'error' || account.status === 'disconnected' || account.status === 'needs_reauth') && (
                           <button type="button" onClick={() => onReconnect(account)}>↻</button>
                         )}
                         <button type="button" onClick={() => onDelete(account)}>×</button>

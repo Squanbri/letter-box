@@ -164,4 +164,23 @@ export const postgresMigrations: PostgresMigration[] = [
       WHERE thread_id IS NOT NULL;
     `,
   },
+  {
+    version: 8,
+    name: 'oauth providers and reauth status',
+    sql: `
+      ALTER TABLE accounts
+      DROP CONSTRAINT IF EXISTS accounts_provider_check;
+
+      ALTER TABLE accounts
+      ADD CONSTRAINT accounts_provider_check
+      CHECK (provider IN ('mailru', 'yandex', 'gmail', 'imap'));
+
+      ALTER TABLE accounts
+      DROP CONSTRAINT IF EXISTS accounts_status_check;
+
+      ALTER TABLE accounts
+      ADD CONSTRAINT accounts_status_check
+      CHECK (status IN ('disconnected', 'connected', 'syncing', 'error', 'needs_reauth'));
+    `,
+  },
 ];

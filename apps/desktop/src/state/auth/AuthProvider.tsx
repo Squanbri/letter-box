@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
 import type { AuthSession } from '../../shared/api/client';
-import { api, clearAuthSession, loadAuthSession } from '../../shared/api/client';
+import { api, applyAuthSession, clearAuthSession, loadAuthSession } from '../../shared/api/client';
 import { queryClient } from '../queryClient';
 
 interface AuthContextValue {
@@ -17,6 +17,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     void loadAuthSession().then(setSession);
+  }, []);
+
+  useEffect(() => {
+    return window.letterBoxSession?.onUpdated?.((value) => {
+      try {
+        const next = JSON.parse(value) as AuthSession;
+        applyAuthSession(next);
+        setSession(next);
+      } catch {
+        /* ignore malformed session from main */
+      }
+    });
   }, []);
 
   useEffect(() => {
